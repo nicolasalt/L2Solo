@@ -2273,21 +2273,13 @@ function renderRaidBossMapPoints() {
         .filter((boss) => boss.status === 'alive' && boss.loc && (
             state.showMapRaids || state.phase === 'raidbosses' || String(boss.id) === String(state.selectedRaidBossId)
         ));
-    const clusters = state.showMapRaids || state.phase === 'raidbosses'
-        ? MapClusters.clusterProjected(bosses.map((boss) => ({ boss, point: project(boss.location?.area?.mapAnchor || boss.loc) })), {
-            cellSize: screenUnits(48),
-            viewport: visibleMapViewport(),
-            margin: screenUnits(64)
-        })
-        : bosses.map((boss) => ({ members: [{ boss, point: project(boss.location?.area?.mapAnchor || boss.loc) }], point: project(boss.location?.area?.mapAnchor || boss.loc), size: 1 }));
-
-    clusters.forEach((cluster) => {
-        if (cluster.size > 1) {
-            renderRaidBossCluster(cluster);
-            return;
-        }
-        const boss = cluster.members[0].boss;
-        const point = cluster.point;
+    // Every boss is its own marker, never grouped, with its level always on the map.
+    const viewport = visibleMapViewport();
+    const margin = screenUnits(64);
+    bosses.forEach((boss) => {
+        const point = project(boss.location?.area?.mapAnchor || boss.loc);
+        if (viewport && (point.x < viewport.x - margin || point.x > viewport.x + viewport.width + margin
+            || point.y < viewport.y - margin || point.y > viewport.y + viewport.height + margin)) return;
         const selected = String(boss.id) === String(state.selectedRaidBossId);
         const radius = screenUnits(9);
         const group = svgEl('g', {
@@ -2305,16 +2297,15 @@ function renderRaidBossMapPoints() {
             d: `M 0 ${-radius} L ${radius} 0 L 0 ${radius} L ${-radius} 0 Z`,
             'vector-effect': 'non-scaling-stroke'
         }));
-        if (selected || viewportWidth < 2000) {
-            const label = svgEl('text', {
-                class: 'raid-boss-label',
-                x: radius + screenUnits(8),
-                y: screenUnits(4),
-                style: `font-size:${screenUnits(11)}px`
-            });
-            label.textContent = boss.name;
-            group.appendChild(label);
-        }
+        const label = svgEl('text', {
+            class: 'raid-boss-label',
+            x: radius + screenUnits(8),
+            y: screenUnits(4),
+            style: `font-size:${screenUnits(11)}px`
+        });
+        // Zoomed in (or selected): name and level; zoomed out: the level alone.
+        label.textContent = selected || viewportWidth < 2000 ? `${boss.name} · ${boss.level}` : `${boss.level}`;
+        group.appendChild(label);
         els.raidBossLayer.appendChild(group);
     });
 }
@@ -2412,39 +2403,6 @@ async function loadKnowledgeNpcFocus(id) {
         renderKnowledgeNpcScope();
         console.warn('KnowledgeBase :: failed to focus NPC %d: %s', npcId, error.message);
     }
-}
-
-function raidBossClusterLocation(cluster) {
-    const labels = cluster.members.map(({ boss }) => boss.location?.name).filter(Boolean);
-    if (!labels.length) return 'this area';
-    const counts = labels.reduce((result, label) => result.set(label, (result.get(label) || 0) + 1), new Map());
-    return [...counts.entries()].sort((left, right) => right[1] - left[1])[0][0];
-}
-
-function renderRaidBossCluster(cluster) {
-    const radiusPx = clamp(12 + Math.log2(cluster.size) * 1.2, 15, 21);
-    const radius = screenUnits(radiusPx);
-    const group = svgEl('g', {
-        class: 'raid-boss-cluster',
-        transform: `translate(${cluster.point.x}, ${cluster.point.y})`,
-        tabindex: 0,
-        role: 'button',
-        'aria-label': `${cluster.size} raid bosses near ${raidBossClusterLocation(cluster)}`
-    });
-    addPointHandlers(group, () => focusMapPoints(cluster.members.map(({ point }) => point), 38));
-    group.appendChild(pointHitElement(Math.max(36, radiusPx * 2 + 8)));
-    group.appendChild(svgEl('circle', { class: 'raid-boss-cluster-ring', r: radius + screenUnits(3), 'vector-effect': 'non-scaling-stroke' }));
-    group.appendChild(svgEl('circle', { class: 'raid-boss-cluster-core', r: radius, 'vector-effect': 'non-scaling-stroke' }));
-    const count = svgEl('text', {
-        class: 'raid-boss-cluster-count',
-        x: 0,
-        y: screenUnits(4),
-        'text-anchor': 'middle',
-        style: `font-size:${screenUnits(12)}px`
-    });
-    count.textContent = cluster.size.toLocaleString();
-    group.appendChild(count);
-    els.raidBossLayer.appendChild(group);
 }
 
 function focusRaidBoss(id) {

@@ -599,12 +599,8 @@ h1 { font-size: 25px; line-height: 1; font-weight: 790; letter-spacing: -0.025em
 .point.is-selected .point-ring { stroke-width: 3px; opacity: 0.95; }
 
 .raid-boss-point { cursor: pointer; filter: url("#pinGlow"); }
-.raid-boss-cluster { cursor: pointer; filter: url("#pinGlow"); }
 .raid-boss-ring { fill: rgba(230, 109, 97, 0.12); stroke: var(--red); stroke-width: 2px; opacity: 0.8; }
 .raid-boss-core { fill: var(--red); stroke: rgba(7, 16, 18, 0.9); stroke-width: 1.5px; }
-.raid-boss-cluster-ring { fill: rgba(230, 109, 97, 0.12); stroke: var(--red); stroke-width: 2px; opacity: 0.86; }
-.raid-boss-cluster-core { fill: #291516; stroke: rgba(230, 109, 97, 0.92); stroke-width: 1.5px; }
-.raid-boss-cluster-count { fill: #ffd0cb; font-weight: 900; pointer-events: none; }
 .raid-boss-point.is-selected .raid-boss-ring { stroke: var(--gold); stroke-width: 4px; opacity: 1; }
 .raid-boss-point.is-selected .raid-boss-core { fill: var(--gold); }
 .raid-boss-label { fill: var(--text); font-size: 11px; font-weight: 820; paint-order: stroke; stroke: rgba(7, 16, 18, 0.94); stroke-width: 3px; pointer-events: none; }
