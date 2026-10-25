@@ -234,7 +234,7 @@ function schema(allowedActions = BotAgentTools.ACTIONS, session = null) {
                 type: 'array',
                 items: { type: 'string' },
                 maxItems: 8,
-                description: 'Skill names for prefer_skill, avoid_skill or clear_skill_preferences. A family word such as "fire" covers every matching learned skill.'
+                description: 'Skill names for prefer_skill, avoid_skill, clear_skill_preferences, or set_skill_rule only_skills / maintain_debuffs. A family word such as "fire" covers every matching learned skill.'
             },
             skillTarget: {
                 type: 'string',
@@ -242,7 +242,8 @@ function schema(allowedActions = BotAgentTools.ACTIONS, session = null) {
             },
             skillRule: {
                 type: 'string',
-                enum: ['', 'no_debuffs', 'allow_debuffs', 'recharge_below', 'recharge_own_mp_floor', 'no_recharge_rule', 'clear'],
+                enum: ['', 'no_debuffs', 'allow_debuffs', 'recharge_below', 'recharge_own_mp_floor', 'no_recharge_rule', 'only_skills', 'no_only_skills',
+                    'maintain_debuffs', 'no_maintain_debuffs', 'no_attacks', 'allow_attacks', 'act_as_healer', 'stop_healer_role', 'clear'],
                 description: 'Rotation rule for set_skill_rule.'
             },
             ruleValue: {

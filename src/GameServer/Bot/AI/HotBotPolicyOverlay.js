@@ -50,13 +50,22 @@ function normalizeBlockedSkills(value) {
 // noDebuffs drops enemy debuffs from every rotation; rechargeBelow (0..1)
 // makes a healer Recharge a party member under that MP ratio, even in combat;
 // rechargeOwnMpFloor (0..0.9) is the healer's own MP ratio under which it
-// stops Recharging (25% without the rule).
+// stops Recharging (25% without the rule). onlySkills are the only enemy
+// skills the bot may cast (it waits for MP rather than cast another);
+// maintainDebuffs are kept up on a raid boss (BotAI.executeCombat);
+// noAttacks keeps the bot out of offence; actAsHealer gives a buffer the
+// healer's duties.
 function normalizeSkillRules(value) {
     if (!value || typeof value !== 'object') return {};
     const rules = {};
     if (value.noDebuffs === true) rules.noDebuffs = true;
     const recharge = Number(value.rechargeBelow);
     if (Number.isFinite(recharge) && recharge > 0) rules.rechargeBelow = clamp(recharge, 0.05, 0.95);
+    const ids = (list, max) => [...new Set((Array.isArray(list) ? list : []).map(Number))].filter((id) => id > 0).slice(0, max);
+    if (ids(value.onlySkills, 8).length) rules.onlySkills = ids(value.onlySkills, 8);
+    if (ids(value.maintainDebuffs, 6).length) rules.maintainDebuffs = ids(value.maintainDebuffs, 6);
+    if (value.noAttacks === true) rules.noAttacks = true;
+    if (value.actAsHealer === true) rules.actAsHealer = true;
     const floor = value.rechargeOwnMpFloor;
     if (floor !== undefined && floor !== null && Number.isFinite(Number(floor))) rules.rechargeOwnMpFloor = clamp(Number(floor), 0, 0.9);
     return rules;
@@ -248,7 +257,8 @@ function combatPolicy(session) {
         party: session?.partyCompanion === true || !!session?.hotBackgroundPartyId,
         stance: overlay?.combatStance || 'balanced',
         spendAllMp: (overlay?.overrides || []).includes('spend_all_mp'),
-        blockedSkills: [...(overlay?.blockedSkills || [])]
+        blockedSkills: [...(overlay?.blockedSkills || [])],
+        onlySkills: [...(overlay?.skillRules?.onlySkills || [])]
     };
 }
 
@@ -261,7 +271,11 @@ function hasOverride(session, name) {
 function skillBlocked(session, skill) {
     const overlay = session?.hotPolicyOverlay ? get(session) : null;
     if (!overlay || !skill) return false;
-    if ((overlay.blockedSkills || []).includes(Number(skill.fetchSelfId?.()))) return true;
+    const skillId = Number(skill.fetchSelfId?.());
+    if ((overlay.blockedSkills || []).includes(skillId)) return true;
+    const only = overlay.skillRules?.onlySkills;
+    if (only?.length && skill.fetchTargetKind?.() === 'enemy'
+        && !only.includes(skillId) && !(overlay.skillRules.maintainDebuffs || []).includes(skillId)) return true;
     if (overlay.skillRules?.noDebuffs !== true) return false;
     const semantic = skill.fetchSemantic?.() || {};
     return semantic.effectType === 'debuff' && skill.fetchTargetKind?.() === 'enemy';

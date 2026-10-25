@@ -701,6 +701,12 @@ const BotAI = {
             if (session) session.lastCombatDecision = { action: 'blocked', reason: 'target_dead_or_missing', at: Date.now() };
             return false;
         }
+        const leaderRules = session?.hotPolicyOverlay ? HotBotPolicyOverlay.skillRules(session) : null;
+        // "The prophet should not attack": no offence at all, PvP defence aside.
+        if (leaderRules?.noAttacks && options.pvp !== true) {
+            session.lastCombatDecision = { action: 'blocked', reason: 'leader_no_attacks', targetId: Number(npc.fetchId?.() || 0) || null, at: Date.now() };
+            return false;
+        }
         const allowedPlayerPartyRaid = BotRaidSafety.isProtectedRaidEntity(npc) &&
             BotRaidSafety.canEngagePlayerPartyRaid(session, npc, options.playerPartyRaidLeaderSession);
         const allowedBotClanRaid = BotRaidSafety.isProtectedRaidEntity(npc)
@@ -848,6 +854,15 @@ const BotAI = {
                 selfId: chargeSkill.fetchSelfId(),
                 ctrl: true
             });
+            return true;
+        }
+        // The leader's standing debuffs go up on a raid boss before any nuke.
+        const upkeep = basicAttackOnly || !canCast || !leaderRules?.maintainDebuffs?.length || !BotRaidSafety.isRaidBoss(npc)
+            ? null : BotCombatUtility.maintainedDebuff(bot, npc, leaderRules.maintainDebuffs);
+        if (upkeep) {
+            session.lastCombatDecision = { action: 'cast_skill', role, reason: 'leader_debuff_upkeep',
+                skillId: upkeep.fetchSelfId(), skillName: upkeep.fetchName?.() || null, targetId: npc.fetchId(), at: Date.now() };
+            Generics.skillExec(session, bot, { id: npc.fetchId(), selfId: upkeep.fetchSelfId(), ctrl: true });
             return true;
         }
         combatPolicy.rejectedAlternatives = [];

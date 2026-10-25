@@ -1117,6 +1117,44 @@ function setSkillRule(context) {
         if (!Number.isFinite(percent) || percent < 0 || percent > 90) return { applied: false, reason: 'invalid_skill_rule' };
         rules.rechargeOwnMpFloor = percent / 100;
         reply = `I won't Recharge anyone while my own MP is under ${Math.round(percent)}%.`;
+    } else if (rule === 'only_skills' || rule === 'maintain_debuffs') {
+        // "Prominence only, nothing else even without MP" / "keep Gloom and
+        // Surrender to Fire on the boss": skills by name, all must be known.
+        const names = (Array.isArray(context.decision.skillNames) ? context.decision.skillNames : [])
+            .concat(context.decision.skillName ? [context.decision.skillName] : []).filter(Boolean);
+        const ids = [], labels = [];
+        for (const name of names) {
+            const found = nameResolver().resolveSkill(session.actor, name);
+            if (!found.skill) return { applied: false, reason: found.reason || 'skill_not_learned', alternatives: found.alternatives };
+            ids.push(Number(found.skill.fetchSelfId()));
+            labels.push(found.skill.fetchName());
+        }
+        if (!ids.length) return { applied: false, reason: 'missing_skill_name' };
+        if (rule === 'only_skills') {
+            rules.onlySkills = ids;
+            reply = `Only ${labels.join(', ')} from me, even if I have to wait for mana.`;
+        } else {
+            rules.maintainDebuffs = ids;
+            reply = `I'll keep ${labels.join(', ')} up on the boss.`;
+        }
+    } else if (rule === 'no_only_skills') {
+        delete rules.onlySkills;
+        reply = 'Back to my full spell list.';
+    } else if (rule === 'no_maintain_debuffs') {
+        delete rules.maintainDebuffs;
+        reply = 'No more debuff upkeep.';
+    } else if (rule === 'no_attacks') {
+        rules.noAttacks = true;
+        reply = "I won't attack, only support.";
+    } else if (rule === 'allow_attacks') {
+        delete rules.noAttacks;
+        reply = 'I can fight again.';
+    } else if (rule === 'act_as_healer') {
+        rules.actAsHealer = true;
+        reply = 'I will heal the party as a healer does.';
+    } else if (rule === 'stop_healer_role') {
+        delete rules.actAsHealer;
+        reply = 'Back to my usual role.';
     } else if (rule === 'no_recharge_rule') {
         delete rules.rechargeBelow;
         delete rules.rechargeOwnMpFloor;
@@ -1651,7 +1689,7 @@ function registerTools() {
         prefer_skill: 'Lead with the named skills (skillNames) from now on, until the party ends or the leader clears it.',
         avoid_skill: 'Stop using the named skills (skillNames) from now on, until the party ends or the leader clears it.',
         clear_skill_preferences: 'Clear prefer/avoid orders for skillNames, or for every skill when skillNames is empty.',
-        set_skill_rule: 'Set a rotation rule: skillRule no_debuffs | allow_debuffs | recharge_below (ruleValue = MP percent; healers Recharge anyone below it, in combat too) | recharge_own_mp_floor (ruleValue = the healer\'s own MP percent under which it stops Recharging; default 25) | no_recharge_rule | clear.',
+        set_skill_rule: 'Set a rotation rule: skillRule no_debuffs | allow_debuffs | recharge_below (ruleValue = MP percent; healers Recharge anyone below it, in combat too) | recharge_own_mp_floor (ruleValue = the healer\'s own MP percent under which it stops Recharging; default 25) | no_recharge_rule | only_skills (skillNames: the only attack spells it may cast; it waits for MP instead of casting others) | no_only_skills | maintain_debuffs (skillNames: debuffs kept up on a raid boss, e.g. Curse Gloom, Surrender To Fire) | no_maintain_debuffs | no_attacks / allow_attacks (a support bot that never attacks) | act_as_healer / stop_healer_role (a buffer that heals like a healer) | clear.',
         override_rule: 'Override a built-in caution rule for the party (scope=self for this bot): overrideName ignore_level_limits | engage_raid | no_retreat | spend_all_mp, overrideEnabled true/false. The raid curse, death and missing skills stay hard limits.',
         buy_for_self: 'items: the whole shopping list [{itemName, amount}] (or itemName + amount for one item). Go to the shop that sells it (shots, potions, scrolls, reagents, gear), buy amount with the buyer\'s own Adena, keep it and come back. forMembers names who buys (names, classes like "necromancers", roles like "mages", or "everyone"); empty = this bot.',
         upgrade_gear: 'Buy the best affordable upgrade from the gear plan. slots limits it to what the leader named: ["weapon"] for "best weapon", or helmet, gloves, chest, legs, boots, shield, armor, jewelry. Without slots any slot may change (and better gear in the bag is equipped). Use only when the leader asks for upgrades. forMembers as for buy_for_self.',

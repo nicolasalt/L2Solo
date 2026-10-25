@@ -92,6 +92,7 @@ function evaluateCandidate(bot, target, skill, role, policy = {}, plannedCharges
     };
     if (!skill || skill.fetchPassive?.()) return null;
     if ((policy.blockedSkills || []).includes(Number(skill.fetchSelfId?.()))) return reject('leader_blocked');
+    if (policy.onlySkills?.length && !policy.onlySkills.includes(Number(skill.fetchSelfId?.()))) return reject('leader_only_skills');
     if (target?.isDead?.() === true || target?.state?.fetchDead?.() === true || target?.fetchHp?.() <= 0) return reject('target_dead');
     if (Feedback.blocked(bot,target,skill)) return reject('native_rejection_backoff');
     // SkillRequest rejects a skill still on reuse after the combat planner has
@@ -265,7 +266,25 @@ function selectChargeSkill(bot, role, policy = {}, target = null) {
     return selectChargePlan(bot, role, policy, target)?.skill || null;
 }
 
+// The leader's "keep Gloom and Surrender to Fire on the boss": the first
+// listed debuff the bot knows, can cast now and the target does not carry.
+function maintainedDebuff(bot, target, skillIds = []) {
+    if (!target || !skillIds.length) return null;
+    const active = new Set(invoke('GameServer/Effects/EffectStore').list(target, { includeBuffs: false })
+        .map((effect) => Number(effect?.id || 0)));
+    const mp = Number(bot.fetchMp?.() || 0);
+    for (const id of skillIds) {
+        const skill = bot.skillset?.fetchSkill?.(id) || (bot.skillset?.skills || []).find((entry) => Number(entry.fetchSelfId?.()) === Number(id));
+        if (!skill || active.has(Number(id))) continue;
+        if (bot.canUseSkill?.(skill) === false || Number(skill.fetchConsumedMp?.() || 0) > mp) continue;
+        if (Feedback.blocked(bot, target, skill)) continue;
+        return skill;
+    }
+    return null;
+}
+
 module.exports = {
+    maintainedDebuff,
     OFFENSIVE_TYPES,
     MAGE_MELEE_FINISH_MAX_HITS,
     evaluate,

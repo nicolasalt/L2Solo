@@ -578,6 +578,20 @@ pin('healer_recharges_party_mp', {
     expect: (w) => assert.strictEqual(w.session.roleDecision.action, 'recharge_party')
 });
 
+// The leader's "Recharge mages under 50%" outranks topping off HP, so it
+// holds in a fight; a buffer told to heal acts as a healer.
+pin('healer_rule_recharge_beats_top_off', {
+    build: (w) => {
+        healerWorld(w, { playerHp: 60 });
+        w.player.f.mp = 10;
+        w.session.hotPolicyOverlay = { lifetime: 'party' };
+        w.cfg.returns['HotBotPolicyOverlay.skillRules'] = () => ({ rechargeBelow: 0.5 });
+        w.cfg.returns['BotRoles.needsPartyManaRecovery'] = () => true;
+    },
+    role: 'healer',
+    expect: (w) => assert.strictEqual(w.session.roleDecision.reason, 'leader_rule')
+});
+
 pin('healer_personal_threat_control', {
     build: (w) => {
         const mob = npc('mob', { id: 500, x: 150, destId: 101 });

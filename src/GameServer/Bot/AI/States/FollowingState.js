@@ -974,7 +974,10 @@ const FollowingState = {
     // Role, distance, party settings, pull state and the threat this companion answers; protected raid retreat.
     tickPartyContext(ctx) {
         const { session, bot, playerSession, player } = ctx;
-        const role = BotRoles.inferRole(bot);
+        // "The prophet should heal instead": the leader can give a buffer the
+        // healer's duties (it still keeps its buffs up).
+        const role = session.hotPolicyOverlay && invoke('GameServer/Bot/AI/HotBotPolicyOverlay').skillRules(session).actAsHealer
+            ? 'healer' : BotRoles.inferRole(bot);
         const distance = point(bot).distance(point(player));
         const leaderSeated = player.state?.fetchSeated?.() === true;
         const restFormationTarget = leaderSeated ? followTargetFor(session, player) : null;
@@ -1585,6 +1588,17 @@ const FollowingState = {
                 acted = true;
                 recordRoleDecision(session, bot, 'heal_self', 'self_preservation', { targetId: bot.fetchId() });
                 queueSupportSkillOn(session, bot, Generics, bot, emergencyHealSkill, false, 'self_preservation');
+            } else if (ruleManaPartyMember && botVitals.mpRatio >= rechargeOwnMpFloor && healerCanCast(rechargeSkill)) {
+                // The leader's Recharge rule ranks above topping off HP, so it
+                // holds in a fight; only an emergency heal comes first.
+                acted = true;
+                markPartyRecharge(playerSession, bot, ruleManaPartyMember.actor, rechargeSkill);
+                recordRoleDecision(session, bot, 'recharge_party', 'leader_rule', {
+                    targetId: ruleManaPartyMember.actor.fetchId(),
+                    skillId: rechargeSkill.fetchSelfId()
+                });
+                queueSupportSkillOn(session, bot, Generics, ruleManaPartyMember.actor, rechargeSkill, false, 'restore_mp');
+                returnToPartyAfterSupport(session, bot, player, ruleManaPartyMember.actor);
             } else if (woundedPartyMember?.hpRatio < 0.70 && botVitals.mpRatio >= 0.35 && healerCanCast(topOffHealSkill)) {
                 acted = true;
                 const groupHeal = topOffHealSkill?.fetchTargetKind?.() === 'party';

@@ -106,6 +106,42 @@ try {
     assert.strictEqual(rule.applied, true);
     assert.strictEqual(HotBotPolicyOverlay.skillBlocked(bot, slow), true);
 
+    // "Blaze only, even without mana" and "keep Slow on the boss": every other
+    // enemy skill is refused; the kept debuff stays allowed and is cast when
+    // the boss lacks it.
+    const only = BotAgentTools.execute(bot, decision('set_skill_rule', { skillRule: 'only_skills', skillNames: ['blaze'] }), [], ctx());
+    assert.strictEqual(only.applied, true, only.reason);
+    BotAgentTools.execute(bot, decision('set_skill_rule', { skillRule: 'allow_debuffs' }), [], ctx());
+    const upkeep = BotAgentTools.execute(bot, decision('set_skill_rule', { skillRule: 'maintain_debuffs', skillNames: ['slow'] }), [], ctx());
+    assert.strictEqual(upkeep.applied, true, upkeep.reason);
+    assert.deepStrictEqual(HotBotPolicyOverlay.skillRules(bot).onlySkills, [1220]);
+    assert.strictEqual(HotBotPolicyOverlay.skillBlocked(bot, windStrike), true, 'another nuke is refused');
+    assert.strictEqual(HotBotPolicyOverlay.skillBlocked(bot, blaze), false);
+    assert.strictEqual(HotBotPolicyOverlay.skillBlocked(bot, slow), false, 'the kept debuff stays allowed');
+    assert.strictEqual(BotCombatUtility.evaluate(bot.actor, { fetchHp: () => 100, fetchLocX: () => 0, fetchLocY: () => 0 }, flameStrike, 'mage',
+        HotBotPolicyOverlay.combatPolicy(bot)), null, 'combat scoring skips what the leader excluded');
+    const boss = { fetchHp: () => 1000 };
+    const EffectStore = invoke('GameServer/Effects/EffectStore');
+    const originalList = EffectStore.list;
+    try {
+        EffectStore.list = () => [];
+        assert.strictEqual(BotCombatUtility.maintainedDebuff(bot.actor, boss, [1160]), slow, 'a missing debuff is put back up');
+        EffectStore.list = () => [{ id: 1160, type: 'debuff' }];
+        assert.strictEqual(BotCombatUtility.maintainedDebuff(bot.actor, boss, [1160]), null, 'an active debuff is left alone');
+    } finally {
+        EffectStore.list = originalList;
+    }
+    for (const rule of ['no_attacks', 'act_as_healer']) {
+        assert.strictEqual(BotAgentTools.execute(bot, decision('set_skill_rule', { skillRule: rule }), [], ctx()).applied, true);
+    }
+    assert.strictEqual(HotBotPolicyOverlay.skillRules(bot).noAttacks, true);
+    assert.strictEqual(HotBotPolicyOverlay.skillRules(bot).actAsHealer, true);
+    for (const rule of ['no_only_skills', 'no_maintain_debuffs', 'allow_attacks', 'stop_healer_role']) {
+        BotAgentTools.execute(bot, decision('set_skill_rule', { skillRule: rule }), [], ctx());
+    }
+    BotAgentTools.execute(bot, decision('set_skill_rule', { skillRule: 'no_debuffs' }), [], ctx());
+    assert.deepStrictEqual(Object.keys(HotBotPolicyOverlay.skillRules(bot)), ['noDebuffs']);
+
     // "don't Recharge under 10% of your own mana": a floor the healer keeps.
     const BotSkillCapabilities = invoke('GameServer/Bot/AI/BotSkillCapabilities');
     const originalRecharge = BotSkillCapabilities.manaRechargeSkill;
