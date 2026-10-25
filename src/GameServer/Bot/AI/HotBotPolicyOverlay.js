@@ -48,13 +48,17 @@ function normalizeBlockedSkills(value) {
 }
 
 // noDebuffs drops enemy debuffs from every rotation; rechargeBelow (0..1)
-// makes a healer Recharge a party member under that MP ratio, even in combat.
+// makes a healer Recharge a party member under that MP ratio, even in combat;
+// rechargeOwnMpFloor (0..0.9) is the healer's own MP ratio under which it
+// stops Recharging (25% without the rule).
 function normalizeSkillRules(value) {
     if (!value || typeof value !== 'object') return {};
     const rules = {};
     if (value.noDebuffs === true) rules.noDebuffs = true;
     const recharge = Number(value.rechargeBelow);
     if (Number.isFinite(recharge) && recharge > 0) rules.rechargeBelow = clamp(recharge, 0.05, 0.95);
+    const floor = value.rechargeOwnMpFloor;
+    if (floor !== undefined && floor !== null && Number.isFinite(Number(floor))) rules.rechargeOwnMpFloor = clamp(Number(floor), 0, 0.9);
     return rules;
 }
 

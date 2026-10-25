@@ -106,6 +106,22 @@ try {
     assert.strictEqual(rule.applied, true);
     assert.strictEqual(HotBotPolicyOverlay.skillBlocked(bot, slow), true);
 
+    // "don't Recharge under 10% of your own mana": a floor the healer keeps.
+    const BotSkillCapabilities = invoke('GameServer/Bot/AI/BotSkillCapabilities');
+    const originalRecharge = BotSkillCapabilities.manaRechargeSkill;
+    BotSkillCapabilities.manaRechargeSkill = () => ({ fetchSelfId: () => 1013 });
+    try {
+        const floor = BotAgentTools.execute(bot, decision('set_skill_rule', { skillRule: 'recharge_own_mp_floor', ruleValue: 10 }), [], ctx());
+        assert.strictEqual(floor.applied, true, floor.reason);
+        assert.strictEqual(HotBotPolicyOverlay.skillRules(bot).rechargeOwnMpFloor, 0.1);
+        assert.strictEqual(HotBotPolicyOverlay.skillRules(bot).noDebuffs, true, 'the floor keeps the other rules');
+        assert.strictEqual(BotAgentTools.execute(bot, decision('set_skill_rule', { skillRule: 'recharge_own_mp_floor', ruleValue: 95 }), [], ctx()).applied, false);
+        BotAgentTools.execute(bot, decision('set_skill_rule', { skillRule: 'no_recharge_rule' }), [], ctx());
+        assert.strictEqual(HotBotPolicyOverlay.skillRules(bot).rechargeOwnMpFloor, undefined);
+    } finally {
+        BotSkillCapabilities.manaRechargeSkill = originalRecharge;
+    }
+
     // Unknown skills are named, not answered with "not in my kit".
     const unknown = BotAgentTools.execute(bot, decision('use_skill', { skillName: 'Hurricane' }), [], ctx());
     assert.strictEqual(unknown.applied, false);

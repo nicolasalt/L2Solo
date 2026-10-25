@@ -1460,9 +1460,12 @@ const FollowingState = {
             ? lowestManaPartyMember(playerSession, bot, pulling.puller?.actor, 900, { emergencyTankOnly: true })
             : null;
         // The leader's "Recharge mages below N% MP" rule applies in combat too.
-        const rechargeBelow = role === 'healer' && rechargeSkill && session.hotPolicyOverlay
-            ? invoke('GameServer/Bot/AI/HotBotPolicyOverlay').skillRules(session).rechargeBelow
+        const leaderSkillRules = role === 'healer' && rechargeSkill && session.hotPolicyOverlay
+            ? invoke('GameServer/Bot/AI/HotBotPolicyOverlay').skillRules(session)
             : null;
+        const rechargeBelow = leaderSkillRules?.rechargeBelow || null;
+        // The leader may move the healer's own-MP floor for Recharge (25% by default).
+        const rechargeOwnMpFloor = leaderSkillRules?.rechargeOwnMpFloor ?? 0.25;
         const ruleManaPartyMember = rechargeBelow
             ? partyMembersInSupportRange(playerSession, bot, 900)
                 .filter((entry) => entry.actor !== bot && entry.mpRatio < rechargeBelow)
@@ -1580,10 +1583,11 @@ const FollowingState = {
             } else if (impairments.silenced) {
                 recordRoleDecision(session, bot, 'save_mp', 'silenced');
                 keepRoleDecision = true;
-            } else if (botVitals.mpRatio < 0.25) {
+            } else if (botVitals.mpRatio < 0.25
+                && !(manaPartyMember && botVitals.mpRatio >= rechargeOwnMpFloor && !isBusy(bot) && !healerNeedsAction)) {
                 recordRoleDecision(session, bot, 'save_mp', 'low_mp');
                 keepRoleDecision = true;
-            } else if (manaPartyMember && rechargeSkill && !isBusy(bot) && !healerNeedsAction) {
+            } else if (manaPartyMember && rechargeSkill && botVitals.mpRatio >= rechargeOwnMpFloor && !isBusy(bot) && !healerNeedsAction) {
                 acted = true;
                 markPartyRecharge(playerSession, bot, manaPartyMember.actor, rechargeSkill);
                 recordRoleDecision(session, bot, 'recharge_party', emergencyTankManaMember ? 'restore_tank_control_mp' : 'restore_mp', {

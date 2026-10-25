@@ -194,9 +194,22 @@ async function main() {
         assert.deepStrictEqual(run.events.map((e) => e[0]), ['BuffService.command', 'sendNearby', 'BotManager.handlePlayerSpeak']);
     }
 
-    // Party (3), alliance (9) and an unknown kind are local broadcasts with no
-    // command dispatch.
-    for (const kind of [3, 9, 17]) {
+    // A dot command typed in party chat (3) runs and is not broadcast.
+    {
+        const run = consume(player, { kind: 3, text: '.leave' });
+        assert.deepStrictEqual(run.events, [['BuffService.command', 'player_pin', '.leave'], ['World.dismissParty', 'player_pin', true]]);
+    }
+    // Party chat without a command, alliance (9) and an unknown kind are local
+    // broadcasts with no command dispatch.
+    {
+        const data = { kind: 3, text: 'hello' };
+        const run = consume(player, data);
+        assert.deepStrictEqual(run.events, [
+            ['sendNearby', 'player_pin', speakLine(3, 'hello'), true],
+            ['BotManager.handlePlayerSpeak', 'player_pin', data]
+        ], 'plain party chat is a local broadcast');
+    }
+    for (const kind of [9, 17]) {
         const data = { kind, text: '.leave' };
         const run = consume(player, data);
         assert.strictEqual(run.result, undefined);

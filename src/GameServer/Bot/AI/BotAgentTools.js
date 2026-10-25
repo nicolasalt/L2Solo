@@ -1111,8 +1111,15 @@ function setSkillRule(context) {
         if (!Number.isFinite(percent) || percent < 5 || percent > 95) return { applied: false, reason: 'invalid_skill_rule' };
         rules.rechargeBelow = percent / 100;
         reply = `I'll Recharge anyone under ${Math.round(percent)}% MP, in combat too.`;
+    } else if (rule === 'recharge_own_mp_floor') {
+        if (!BotSkillCapabilities.manaRechargeSkill?.(session.actor)) return { applied: false, reason: 'recharge_not_learned' };
+        const percent = Number(context.decision.ruleValue);
+        if (!Number.isFinite(percent) || percent < 0 || percent > 90) return { applied: false, reason: 'invalid_skill_rule' };
+        rules.rechargeOwnMpFloor = percent / 100;
+        reply = `I won't Recharge anyone while my own MP is under ${Math.round(percent)}%.`;
     } else if (rule === 'no_recharge_rule') {
         delete rules.rechargeBelow;
+        delete rules.rechargeOwnMpFloor;
         reply = 'Back to my normal Recharge timing.';
     } else if (rule === 'clear') {
         HotBotPolicyOverlay.set(session, { skillRules: null }, controllerContext(context));
@@ -1604,7 +1611,7 @@ function registerTools() {
         prefer_skill: 'Lead with the named skills (skillNames) from now on, until the party ends or the leader clears it.',
         avoid_skill: 'Stop using the named skills (skillNames) from now on, until the party ends or the leader clears it.',
         clear_skill_preferences: 'Clear prefer/avoid orders for skillNames, or for every skill when skillNames is empty.',
-        set_skill_rule: 'Set a rotation rule: skillRule no_debuffs | allow_debuffs | recharge_below (ruleValue = MP percent; healers Recharge anyone below it, in combat too) | no_recharge_rule | clear.',
+        set_skill_rule: 'Set a rotation rule: skillRule no_debuffs | allow_debuffs | recharge_below (ruleValue = MP percent; healers Recharge anyone below it, in combat too) | recharge_own_mp_floor (ruleValue = the healer\'s own MP percent under which it stops Recharging; default 25) | no_recharge_rule | clear.',
         override_rule: 'Override a built-in caution rule for the party (scope=self for this bot): overrideName ignore_level_limits | engage_raid | no_retreat | spend_all_mp, overrideEnabled true/false. The raid curse, death and missing skills stay hard limits.',
         buy_for_self: 'items: the whole shopping list [{itemName, amount}] (or itemName + amount for one item). Go to the shop that sells it (shots, potions, scrolls, reagents, gear), buy amount with the buyer\'s own Adena, keep it and come back. forMembers names who buys (names, classes like "necromancers", roles like "mages", or "everyone"); empty = this bot.',
         upgrade_gear: 'Buy the best affordable upgrade from the gear plan. slots limits it to what the leader named: ["weapon"] for "best weapon", or helmet, gloves, chest, legs, boots, shield, armor, jewelry. Without slots any slot may change (and better gear in the bag is equipped). Use only when the leader asks for upgrades. forMembers as for buy_for_self.',

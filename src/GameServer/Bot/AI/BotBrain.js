@@ -242,14 +242,14 @@ function schema(allowedActions = BotAgentTools.ACTIONS, session = null) {
             },
             skillRule: {
                 type: 'string',
-                enum: ['', 'no_debuffs', 'allow_debuffs', 'recharge_below', 'no_recharge_rule', 'clear'],
+                enum: ['', 'no_debuffs', 'allow_debuffs', 'recharge_below', 'recharge_own_mp_floor', 'no_recharge_rule', 'clear'],
                 description: 'Rotation rule for set_skill_rule.'
             },
             ruleValue: {
                 type: 'number',
                 minimum: 0,
                 maximum: 100,
-                description: 'recharge_below: MP percent threshold, e.g. 40.'
+                description: 'recharge_below: MP percent threshold, e.g. 40; recharge_own_mp_floor: the healer\'s own MP percent, e.g. 10.'
             },
             overrideName: {
                 type: 'string',
