@@ -91,6 +91,20 @@ Promise.all([
     assert.strictEqual(await requestReason({ trust: 8, insults: 0, recentlyAbandonedAt: Date.now() - 5 * 60 * 1000 + 2000 }),
         'recently_abandoned');
     assert.strictEqual(await requestReason({ trust: 8, insults: 0, recentlyAbandonedAt: Date.now() - 5 * 60 * 1000 - 1 }), 'accepted');
+    // friendsNeedTrust off: trust and abandonment no longer matter; an insult still does.
+    const PopulationConfig = invoke('GameServer/Bot/Population/PopulationConfig');
+    const previousNeedsTrust = PopulationConfig.friendsNeedTrust;
+    PopulationConfig.friendsNeedTrust = false;
+    try {
+        assert.strictEqual(await requestReason({ trust: 0, familiarity: 0, insults: 0 }), 'accepted');
+        assert.strictEqual(await requestReason({ trust: 1, insults: 0, recentlyAbandonedAt: Date.now() - 1000 }), 'accepted');
+        assert.strictEqual(await requestReason({ trust: 0, insults: 1 }), 'insults');
+        assert.strictEqual(BotFriendship.canAdd({ trust: 0 }), true);
+        assert.strictEqual(BotFriendship.friendThreshold(), 0);
+    } finally {
+        PopulationConfig.friendsNeedTrust = previousNeedsTrust;
+    }
+    assert.strictEqual(BotFriendship.canAdd({ trust: 0 }), false);
     const removed = await BotFriendship.remove({ characterId: 42 }, 100);
     assert.strictEqual(removed.ok, true, 'removing a friend should clear friendship and const membership');
 

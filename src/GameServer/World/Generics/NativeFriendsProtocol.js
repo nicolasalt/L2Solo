@@ -11,7 +11,7 @@ function encode(state, bots) {
         text(b.className || 'Unknown class', 40), text(b.role, 16),
         text(b.trust, 16), text(b.familiarity, 16), b.selected ? 1 : 0,
         text(b.activity || 'hunting', 32), text(b.currentRegion || 'unknown', 48),
-        Number(b.trust) >= state.threshold ? 1 : 0
+        (b.addable ?? Number(b.trust) >= state.threshold) ? 1 : 0
     ].join('\t'));
     const payload = PREFIX + records.join('\n');
     if (payload.length > 8192) throw new Error('Native friends snapshot exceeds C4 HTML capacity');

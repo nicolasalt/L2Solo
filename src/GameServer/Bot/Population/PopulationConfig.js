@@ -13,6 +13,9 @@ const DEFAULTS = {
     // Every player party invite is treated as a friend invite: no persona,
     // relationship, level-gap, travel or merchant refusal.
     alwaysJoinPlayerParty: false,
+    // A bot accepts a friend request only from a player it trusts and has not
+    // just been abandoned by. Off = any bot that knows you accepts.
+    friendsNeedTrust: true,
     backgroundResolverEnabled: true,
     backgroundPartyEnabled: true,
     phasePolicyEnabled: true,
@@ -243,6 +246,7 @@ const ENV_KEYS = {
     knowledgeErrorsEnabled: 'BOT_KNOWLEDGE_ERRORS_ENABLED',
     partyHistoryEnabled: 'BOT_PARTY_HISTORY_ENABLED',
     alwaysJoinPlayerParty: 'BOT_ALWAYS_JOIN_PLAYER_PARTY',
+    friendsNeedTrust: 'BOT_FRIENDS_NEED_TRUST',
     pvpAggression: 'BOT_PVP_AGGRESSION',
     enabled: 'BOT_POPULATION_ENABLED',
     backgroundResolverEnabled: 'BOT_BACKGROUND_RESOLVER_ENABLED',

@@ -5,7 +5,14 @@ const BotServiceIdentity = invoke('GameServer/Bot/AI/BotServiceIdentity');
 const BotSocialMemory = invoke('GameServer/Bot/AI/BotSocialMemory');
 
 // Friendship needs a trusted relationship; the friends window shows this trust.
+// With friendsNeedTrust off, any bot that knows the player can be added.
 const FRIEND_TRUST = BotSocialMemory.TRUSTED_TRUST;
+function needsTrust() { return invoke('GameServer/Bot/Population/PopulationConfig').friendsNeedTrust !== false; }
+function friendThreshold() { return needsTrust() ? FRIEND_TRUST : 0; }
+function canAdd(bot) { return !needsTrust() || Number(bot?.trust || 0) >= FRIEND_TRUST; }
+function candidateWhere() {
+    return `${needsTrust() ? 's.trust > 0 AND ' : ''}(f.status IS NULL OR f.status <> 'accepted')`;
+}
 const MAX_CONST_MEMBERS = 8;
 const PAGE_SIZE = 12;
 const rosterWrites = new Map();
@@ -48,6 +55,7 @@ function normalize(row) {
         botId: Number(row.botId),
         trust: Number(row.trust || 0),
         familiarity: Number(row.familiarity || 0),
+        addable: canAdd(row),
         selected: !!Number(row.selected),
         classId: profession.classId,
         className: profession.className,
@@ -71,13 +79,13 @@ function list(playerId, where, currentPage, size = PAGE_SIZE, lookahead = false)
 }
 
 const BotFriendship = {
-    FRIEND_TRUST, MAX_CONST_MEMBERS, PAGE_SIZE,
+    FRIEND_TRUST, MAX_CONST_MEMBERS, PAGE_SIZE, canAdd, friendThreshold,
     init() { return Database.execute(['SELECT 1 FROM bot_friendships LIMIT 1', []], 'schema:bot-friends').catch(() => null); },
     listFriends(player, currentPage = 0) { const playerId = id(player); return playerId ? list(playerId, "f.status = 'accepted'", currentPage) : Promise.resolve([]); },
-    listCandidates(player, currentPage = 0) { const playerId = id(player); return playerId ? list(playerId, "s.trust > 0 AND (f.status IS NULL OR f.status <> 'accepted')", currentPage) : Promise.resolve([]); },
+    listCandidates(player, currentPage = 0) { const playerId = id(player); return playerId ? list(playerId, candidateWhere(), currentPage) : Promise.resolve([]); },
     listWindowPage(player, mode, currentPage = 0) {
         const playerId = id(player);
-        const where = mode === 'add' ? "s.trust > 0 AND (f.status IS NULL OR f.status <> 'accepted')" : "f.status = 'accepted'";
+        const where = mode === 'add' ? candidateWhere() : "f.status = 'accepted'";
         return (playerId ? list(playerId, where, currentPage, 8, true) : Promise.resolve([]))
             .then((rows) => ({ rows: rows.slice(0, 8), hasNext: rows.length > 8 }));
     },
@@ -109,9 +117,10 @@ const BotFriendship = {
             const now = Date.now();
             const trust = Number(social.trust || 0);
             const insults = Number(social.insults || 0);
-            const reason = BotSocialMemory.relationship(social) !== 'trusted' ? 'low_trust'
+            const trustGate = needsTrust();
+            const reason = trustGate && BotSocialMemory.relationship(social) !== 'trusted' ? 'low_trust'
                 : insults > 0 ? 'insults'
-                    : BotSocialMemory.recentlyAbandoned(social, now) ? 'recently_abandoned' : null;
+                    : trustGate && BotSocialMemory.recentlyAbandoned(social, now) ? 'recently_abandoned' : null;
             const accepted = !reason;
             return Database.execute([`INSERT INTO bot_friendships (playerId, botId, status, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(playerId, botId) DO UPDATE SET status = excluded.status, updatedAt = excluded.updatedAt`, [playerId, botId, accepted ? 'accepted' : 'declined', now, now]])

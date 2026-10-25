@@ -35,7 +35,7 @@ function render(session, mode = 'friends', currentPage = 0, notice = null, optio
         bots.forEach((bot) => {
             const profession = bot.className || 'Unknown profession';
             const action = isAdd
-                ? (bot.trust >= BotFriendship.FRIEND_TRUST ? Html.link('Add friend', `bot-friends request ${bot.name} ${currentPage}`, { color: Html.COLOR.ok }) : Html.font(`trust ${bot.trust}/${BotFriendship.FRIEND_TRUST}`, Html.COLOR.muted))
+                ? (BotFriendship.canAdd(bot) ? Html.link('Add friend', `bot-friends request ${bot.name} ${currentPage}`, { color: Html.COLOR.ok }) : Html.font(`trust ${bot.trust}/${BotFriendship.FRIEND_TRUST}`, Html.COLOR.muted))
                 : Html.link(bot.selected ? 'Const: ON' : 'Const: OFF', `bot-friends const ${bot.botId} ${currentPage}`, { color: bot.selected ? Html.COLOR.ok : Html.COLOR.link })
                     + '<br1>'
                     + Html.link('Remove', `bot-friends remove ${bot.botId} ${currentPage}`, { color: Html.COLOR.danger });
@@ -46,7 +46,7 @@ function render(session, mode = 'friends', currentPage = 0, notice = null, optio
             body += Html.font(`${bot.activity || 'hunting'} / ${bot.currentRegion || 'unknown'} / trust ${bot.trust} / familiarity ${bot.familiarity}`, Html.COLOR.muted);
             body += '<br1>' + Html.line(Html.TEXTURE.blank, Html.WIDTH, 5);
         });
-        if (!bots.length) body += Html.section('No Bots', Html.font(isAdd ? 'Run with bots to build trust first.' : 'No confirmed friends yet.', Html.COLOR.muted));
+        if (!bots.length) body += Html.section('No Bots', Html.font(isAdd ? (BotFriendship.friendThreshold() > 0 ? 'Run with bots to build trust first.' : 'Talk or party with a bot first; then it shows up here.') : 'No confirmed friends yet.', Html.COLOR.muted));
         const nav = currentPage > 0 ? Html.link('Previous', `bot-friends ${mode} ${currentPage - 1}`, { color: Html.COLOR.link }) : Html.font('Previous', Html.COLOR.muted);
         body += '<br>' + Html.columns([
             Html.cell(isAdd ? Html.link('My friends', 'bot-friends friends 0', { color: Html.COLOR.link }) : Html.link('Add friend', 'bot-friends add 0', { color: Html.COLOR.link }), { align: 'center' }),
@@ -82,7 +82,7 @@ async function renderNative(session, open = false, message = '') {
     session.nativeFriendsHasNext = result.hasNext;
     const Protocol = invoke('GameServer/World/Generics/NativeFriendsProtocol');
     session.dataSendToMe(ServerResponse.npcHtml(actor.fetchId(), Protocol.encode({
-        ...view, open, hasNext: result.hasNext, selectedCount, threshold: BotFriendship.FRIEND_TRUST,
+        ...view, open, hasNext: result.hasNext, selectedCount, threshold: BotFriendship.friendThreshold(),
         message
     }, result.rows)));
 }
