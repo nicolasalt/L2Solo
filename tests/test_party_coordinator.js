@@ -138,6 +138,38 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         assert.strictEqual(failed.ok, false);
         assert.match(told[0][1], /say that again/);
 
+        // Bridge: the plan and the replies come from files someone else writes.
+        const fs = require('fs');
+        const os = require('os');
+        const path = require('path');
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coordinator-bridge-'));
+        options.default.AI = { ...options.default.AI, coordinatorBridge: 'true', coordinatorBridgeDir: dir, coordinatorBridgeTimeoutSec: 20 };
+        told.length = 0;
+        planReply = () => { throw new Error('the model must not be asked while the bridge answers'); };
+        const answering = setInterval(() => {
+            const inbox = path.join(dir, 'inbox');
+            if (!fs.existsSync(inbox)) return;
+            for (const file of fs.readdirSync(inbox)) {
+                const request = JSON.parse(fs.readFileSync(path.join(inbox, file), 'utf8'));
+                if (fs.existsSync(request.answerFile)) continue;
+                const data = request.kind === 'plan'
+                    ? { steps: [], speakers: ['Yaman'] }
+                    : { replies: [{ bot: 'Yaman', text: `bridged ${request.payload.leaderMessage}` }] };
+                fs.writeFileSync(request.answerFile, JSON.stringify({ data }));
+            }
+        }, 100);
+        try {
+            const bridged = await PartyCoordinator.handle(leader, 'hello there');
+            assert.strictEqual(bridged.ok, true);
+            await wait(50);
+            assert.deepStrictEqual(told, [['Yaman', 'bridged hello there']]);
+            assert(fs.readdirSync(dir).some((file) => file.startsWith('done-')), 'answered calls are kept as done files');
+        } finally {
+            clearInterval(answering);
+            fs.rmSync(dir, { recursive: true, force: true });
+            options.default.AI = { ...options.default.AI, coordinatorBridge: 'false' };
+        }
+
         // Party chat from the leader goes to the coordinator, not the word matching.
         const handled = [];
         const originalHandle = PartyCoordinator.handle;

@@ -204,7 +204,55 @@ function narrationSystemPrompt() {
     ].join(' ');
 }
 
+// ---- Bridge: a person (or another agent) plays the coordinator. Each call
+// is written to tmp/coordinator-bridge/inbox/<id>.json; the answer
+// { "data": {...} } is read from outbox/<id>.json. No answer in time falls
+// back to the model.
+function bridgeDir() {
+    return require('path').resolve(String(aiOptions().coordinatorBridgeDir || 'tmp/coordinator-bridge'));
+}
+
+function bridgeEnabled() {
+    return bool(aiOptions().coordinatorBridge);
+}
+
+async function callBridge(kind, systemPrompt, payload, schema) {
+    const fs = require('fs');
+    const path = require('path');
+    const id = `${Date.now()}-${kind}-${Math.random().toString(36).slice(2, 7)}`;
+    const BRIDGE_DIR = bridgeDir();
+    const inbox = path.join(BRIDGE_DIR, 'inbox');
+    const outbox = path.join(BRIDGE_DIR, 'outbox');
+    fs.mkdirSync(inbox, { recursive: true });
+    fs.mkdirSync(outbox, { recursive: true });
+    const request = path.join(inbox, `${id}.json`);
+    const answer = path.join(outbox, `${id}.json`);
+    fs.writeFileSync(request, JSON.stringify({ id, kind, at: new Date().toISOString(), answerFile: answer,
+        schema: schema.schema, systemPrompt, payload }, null, 2));
+    const timeoutMs = Math.max(10, Number(aiOptions().coordinatorBridgeTimeoutSec || 240)) * 1000;
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        if (!fs.existsSync(answer)) continue;
+        try {
+            const parsed = JSON.parse(fs.readFileSync(answer, 'utf8'));
+            fs.renameSync(request, path.join(BRIDGE_DIR, `done-${id}.json`));
+            fs.renameSync(answer, path.join(BRIDGE_DIR, `done-${id}.answer.json`));
+            return { ok: true, data: parsed.data ?? parsed, usage: null, bridged: true };
+        } catch (error) {
+            // A half-written answer: read it again on the next poll.
+        }
+    }
+    try { fs.renameSync(request, path.join(BRIDGE_DIR, `timeout-${id}.json`)); } catch (_) { /* already gone */ }
+    return { ok: false, reason: 'bridge_timeout' };
+}
+
 async function callModel(kind, systemPrompt, payload, schema, leaderSession, botId) {
+    if (bridgeEnabled()) {
+        const bridged = await callBridge(kind, systemPrompt, payload, schema);
+        if (bridged.ok) return bridged;
+        utils.infoWarn('Coordinator', 'bridge gave no %s answer in time; asking the model', kind);
+    }
     const Gateway = gateway();
     const playerId = leaderSession.actor.fetchId?.() || null;
     return Gateway.request({
