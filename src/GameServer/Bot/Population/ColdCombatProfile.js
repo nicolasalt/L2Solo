@@ -411,6 +411,22 @@ function skillRecordsFromTree(classId, level) {
     }).filter(Boolean);
 }
 
+// Items the class's active skills use up at this level (a Necromancer's
+// Cursed Bones for Death Spike). Cached per class and level.
+const reagentCache = new Map();
+function skillReagentIds(classId, level) {
+    const key = `${number(classId)}:${number(level)}`;
+    if (reagentCache.has(key)) return reagentCache.get(key);
+    const ids = new Set();
+    for (const record of skillRecordsFromTree(classId, level)) {
+        if (record.passive) continue;
+        const itemId = number(skillDefinition(record.selfId, record.level)?.itemId);
+        if (itemId > 0) ids.add(itemId);
+    }
+    reagentCache.set(key, ids);
+    return ids;
+}
+
 function treeSnapshot(state = {}, timestamp = Date.now()) {
     const existing = state.stats?.coldCombat || {};
     const classId = number(state.stats?.classId, number(state.classId));
@@ -1004,6 +1020,6 @@ function size() { return { buildGains: buildGains.size, ownerBuilds: ownerBuilds
 module.exports = {
     PROFILE_VERSION, capture, legacySnapshot, treeSnapshot, needsDatabaseBackfill, profileFor, withProfileScope, skillsFor, powerFor, buildGainsFor, buildInputKey, gainFor, forgetBuild, powerNumbers, buildOptions, withEquipmentPreparation, size,
     isAttackSkill, offensiveSkills, summonDetails, summonSkills, corpseSummonSkills, activeMusicEffects, partyMusicSkills, partyMusicMpCost, partyMusicEffect,
-    spotSpawns, npcForSpot, npcCombatStats, skillSnapshotsFromRecords, skillRecordsFromTree, treeSkillLevel,
+    spotSpawns, npcForSpot, npcCombatStats, skillSnapshotsFromRecords, skillRecordsFromTree, skillReagentIds, treeSkillLevel,
     statMultiplier: multiplier, statAdd: add
 };

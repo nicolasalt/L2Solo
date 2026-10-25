@@ -549,11 +549,15 @@ function saleCandidates(state, options = {}) {
     for (const [selfId, amount] of Object.entries(kept)) {
         reserved[selfId] = Math.max(Number(reserved[selfId] || 0), amount + Number(clan[selfId] || 0));
     }
+    const ownReagents = invoke('GameServer/Bot/Population/ColdCombatProfile')
+        .skillReagentIds(Number(state?.stats?.classId || state?.classId || 0), Number(state?.level || 0));
     const candidatesFor = (item) => {
         const selfId = Number(item?.selfId || 0);
         // Prepared reserves can describe only the bag while this projection
         // also includes warehouse or escrow stock. Personal shots stay owned.
         if (invoke('GameServer/Inventory/ShotStock').isPersonalShot(state, selfId)) return [];
+        // Reagents its own spells use up (Cursed Bones for Death Spike) stay too.
+        if (ownReagents.has(selfId)) return [];
         const sellableAmount = saleFreeAmount(state, item, reserved);
         if (!selfId || selfId === 57 || BeginnerShots.isRestricted(selfId) || sellableAmount <= 0) return [];
 

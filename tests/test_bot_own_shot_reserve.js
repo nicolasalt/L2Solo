@@ -133,6 +133,18 @@ assert.strictEqual(ShotStock.isPersonalShot(caster, 3949), false, 'another grade
 assert.strictEqual(ShotStock.isPersonalShot(orc, 3948), false, 'a fighter has no use for blessed spiritshots');
 delete caster.inventory[3948];
 delete caster.inventory[3949];
+
+// A Necromancer keeps the Cursed Bones its Death Spike uses up; a class
+// without that spell may sell them.
+const necro = stateWith(0, { stats: { classId: 13 } });
+necro.level = 45;
+necro.inventory[2508] = { selfId: 2508, amount: 1000, stackable: true };
+assert.strictEqual(counts(ItemDisposition.saleCandidates(necro, { unlimited: true })).get(2508), undefined,
+    'a Necromancer never sells its Cursed Bones');
+const bonesOnFighter = structuredClone(orc);
+bonesOnFighter.inventory[2508] = { selfId: 2508, amount: 1000, stackable: true };
+assert.strictEqual(counts(ItemDisposition.saleCandidates(bonesOnFighter, { unlimited: true })).get(2508) > 0, true,
+    'a class without a bone spell sells them');
 assert.strictEqual(counts(ItemDisposition.saleCandidates(orc, { keptAmounts: {}, unlimited: true })).get(D_SOULSHOT), undefined,
     'a prepared warehouse or escrow projection cannot bypass personal ammunition protection');
 const upgraded = structuredClone(orc);
