@@ -7,7 +7,9 @@ let moneyPacketMissing = 0;
 function budget(state = {}, escrow = 0) {
     return nonnegative(state.adena ?? state.inventory?.[57]?.amount) + nonnegative(escrow);
 }
-function operatingReserve(state = {}) { return require('./EconomyContext').survivalReserve(state); }
+// state.leaderCommand: a bot in the human leader's party spends its whole
+// wallet on what the leader commands; its own reserves and goals do not apply.
+function operatingReserve(state = {}) { return state.leaderCommand === true ? 0 : require('./EconomyContext').survivalReserve(state); }
 function shortfall(state = {}, price = 0, reserve = 0, escrow = 0) {
     return Math.max(0, nonnegative(price) + nonnegative(reserve) - budget(state, escrow));
 }
@@ -77,6 +79,7 @@ function clanCredit(state, own = null) {
     return held;
 }
 function spendable(state = {}, escrow = 0, options = {}, captureOutput = null) {
+    if (state.leaderCommand === true) return budget(state, escrow);
     // A purchase that carries a clanPart (native terms) is its clan errand's own.
     const own = options.ownClanErrand || (options.free === true && options.clanPart !== undefined && options.itemId
         ? { selfId: options.itemId } : null);

@@ -25,6 +25,8 @@ function currentState(session, bot, town, economy = null) {
         name: bot.fetchName?.() || previous.name,
         level: Number(bot.fetchLevel?.() || previous.level || 1),
         adena: actorAdena(bot),
+        // A party companion is under the leader's command: whole wallet, no reserves.
+        leaderCommand: session.partyCompanion === true,
         currentRegion: physical ? physical.currentRegion : town.name,
         loc: physical?.loc || {
             locX: Number(bot.fetchLocX()),
@@ -155,8 +157,9 @@ function planErrand(session, bot, town, purchaseCount = 0, excludedSlots = [], e
     const checked = checkedPlan(session, state, town, { excludedSlots, economy });
     if (checked.pending) return { pending: true };
     const plan = checked.plan;
+    const { leaderCommand: _command, ...savedState } = state;
     session.coldLifeState = {
-        ...state,
+        ...savedState,
         stats: { ...(state.stats || {}), ...checked.statsPacket, equipmentPlan: plan }
     };
     refreshPartyMemberships([session], invoke);
@@ -181,7 +184,9 @@ function planErrand(session, bot, town, purchaseCount = 0, excludedSlots = [], e
         price: Number(offer.price),
         amount: Math.min(Number(offer.count || Infinity), Number(plan.amount || 1)),
         // The native writer checks the same terms the plan was budgeted with.
-        funding: PurchaseFunding.nativeTerms(PurchaseFunding.goalTerms({ plan }), plan.target.selfId),
+        funding: session.partyCompanion === true
+            ? { ...PurchaseFunding.nativeTerms(PurchaseFunding.goalTerms({ plan }), plan.target.selfId), leaderOrder: true }
+            : PurchaseFunding.nativeTerms(PurchaseFunding.goalTerms({ plan }), plan.target.selfId),
         purchaseCount,
         excludedSlots: [...excludedSlots],
         target: offer.sourceType === 'npc'

@@ -57,7 +57,7 @@ function plan(session, bot, town, state, candidate = state.stats?.equipmentPlan)
     const recipe = recipeFor(state,candidate);
     if (!recipe) return { handled:false };
     if (bot.backpack.fetchItems().some(i=>i.fetchSelfId()===recipe.productId && i.fetchEquipped())) {
-        session.coldLifeState = {...state,stats:{...state.stats,equipmentPlan:{
+        session.coldLifeState = {...state,leaderCommand:undefined,stats:{...state.stats,equipmentPlan:{
             ...candidate,status:'complete',completedAt:Date.now(),reason:'dual_sword_equipped'
         }}};
         refreshPartyMemberships([session], invoke);
@@ -82,7 +82,7 @@ function plan(session, bot, town, state, candidate = state.stats?.equipmentPlan)
         target:{selfId:recipe.productId,name:ItemTemplateIndex.findNumericRowRequired(DataCache.items, recipe.productId)?.template?.name,slot:14},
         combine:{type:'dual_sword',resultId:recipe.productId,requirements:recipe.materials},
         materials:recipe.materials.map(m=>({...m,owned:count(state.inventory,m.selfId),missing:Math.max(0,m.amount-count(state.inventory,m.selfId))})) };
-    session.coldLifeState = { ...state,stats:{...state.stats,equipmentPlan:refreshed} };
+    session.coldLifeState = { ...state,leaderCommand:undefined,stats:{...state.stats,equipmentPlan:refreshed} };
     refreshPartyMemberships([session], invoke);
     if (!target) return {handled:true,errand:null};
     if (missing.length && !count(state.inventory,recipe.productId)) {
