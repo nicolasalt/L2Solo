@@ -452,7 +452,10 @@ module.exports = {
         const personalCraft = require('../../Economy/WishProviders').personalCraftPlan(hotEconomy.state, hotEconomy);
         if (personalCraft && session.coldLifeState) session.coldLifeState = { ...session.coldLifeState,
             stats: { ...session.coldLifeState.stats, equipmentPlan: personalCraft } };
-        const selected = Improvements.chosen(null, hotEconomy);
+        // A trip the leader ordered buys what was ordered: no detour to an
+        // enchant or crafting station on the way.
+        const leaderTrip = session.partyCompanion === true && !!session.companionShopping;
+        const selected = leaderTrip ? null : Improvements.chosen(null, hotEconomy);
         if (selected && selected.kind !== 'enchant') {
             const station = Improvements.stationTarget(bot, selected);
             if (station) { session.shoppingTarget = station; session.shoppingServicePhase = 'improvement'; }

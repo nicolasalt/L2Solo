@@ -189,6 +189,9 @@ function companionTownErrand(session, bot, player, BotAI) {
     const townContext = townForCompanionErrand(player, BotAI);
     if (!townContext) return null;
     const { town, inTown } = townContext;
+    // A player's companion shops, sells and restocks only on the leader's
+    // order (buy_for_self, upgrade_gear, ...), never on its own.
+    if (session.partyCompanion === true && session.followPlayerSession?.botSession !== true) return null;
 
     // In town, every companion may settle its own short task.  In the field,
     // leaving the leader is reserved for an immediately useful resupply;

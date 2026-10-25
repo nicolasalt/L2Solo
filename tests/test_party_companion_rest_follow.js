@@ -2351,6 +2351,9 @@ try {
 
     const errandLeader = fakeActor(2000037, { locX: 83396, locY: 147904, locZ: -3404 });
     const errandLeaderSession = fakeSession('player_town_errand_party', errandLeader);
+    // Only a bot leader's companions run errands on their own; a player's
+    // companion shops on the player's order alone (checked below).
+    errandLeaderSession.botSession = true;
     const zeroWalletErrandBot = fakeActor(2000038, { locX: 83436, locY: 147904, locZ: -3404 });
     zeroWalletErrandBot.backpack.fetchEquippedWeapon = () => ({ fetchRank: () => 'c' });
     const zeroWalletErrandSession = fakeSession('bot_town_errand_party', zeroWalletErrandBot);
@@ -2436,6 +2439,23 @@ try {
     });
     BotManager.botPartySay = originalBotPartySay;
     assert.strictEqual(errandSession.plan, 'shopping', 'companion with no shots should make a brief errand only after the party reaches town');
+    {
+        // The same companion under a player leader waits for an order.
+        const snapshot = { plan: errandSession.plan, companionShopping: errandSession.companionShopping, shoppingTarget: errandSession.shoppingTarget,
+            lastCompanionTownErrandAt: errandSession.lastCompanionTownErrandAt, lastCompanionEquipmentCheckAt: errandSession.lastCompanionEquipmentCheckAt };
+        Object.assign(errandSession, { plan: 'following', companionShopping: undefined, shoppingTarget: undefined,
+            lastCompanionTownErrandAt: 0, lastCompanionEquipmentCheckAt: 0 });
+        errandLeaderSession.botSession = false;
+        FollowingState.tick(errandSession, errandBot, {}, {
+            getClosestNewbieGuide: () => ({ locX: -84081, locY: 243227, locZ: -3723 }),
+            getClosestTown: () => ({ name: 'Giran', x: 83396, y: 147904, z: -3404 }),
+            say() {}, executeCombat() {}, executePvPCombat() {}
+        });
+        assert.strictEqual(errandSession.plan, 'following', "a player's companion never starts a shopping errand on its own");
+        assert.strictEqual(errandSession.companionShopping, undefined);
+        errandLeaderSession.botSession = true;
+        Object.assign(errandSession, snapshot);
+    }
     assert.strictEqual(errandSession.companionShopping?.kind, 'restock_shots', 'town errand should describe the actual missing supply');
     assert.strictEqual(errandSession.shoppingTarget?.town, 'Giran', 'companion errand should stay in the player town');
     assert.strictEqual(errandSession.shoppingTarget?.actorId, shotSeller.fetchId(),
@@ -2470,6 +2490,7 @@ try {
 
     const starterTownLeader = fakeActor(2000046, { locX: 45475, locY: 48359, locZ: -3060 });
     const starterTownLeaderSession = fakeSession('player_elven_town_errand_party', starterTownLeader);
+    starterTownLeaderSession.botSession = true; // errands run only under a bot leader
     let starterTownSeller = fakeActor(2000047, { locX: 45520, locY: 48359, locZ: -3060 });
     const starterTownBot = fakeActor(2000048, { locX: 45500, locY: 48359, locZ: -3060 });
     equippedErrandKit(starterTownBot, 2369);
@@ -2495,6 +2516,7 @@ try {
     assertStarterKitUnchanged();
     const fieldNearStarterLeader = fakeActor(2000051, { locX: 49475, locY: 48359, locZ: -3060 });
     const fieldNearStarterLeaderSession = fakeSession('player_near_elven_field_party', fieldNearStarterLeader);
+    fieldNearStarterLeaderSession.botSession = true; // errands run only under a bot leader
     const fieldNearStarterBot = fakeActor(2000052, { locX: 49500, locY: 48359, locZ: -3060 });
     equippedErrandKit(fieldNearStarterBot, 2369);
     const fieldNearStarterSession = fakeSession('bot_near_elven_field_market', fieldNearStarterBot);

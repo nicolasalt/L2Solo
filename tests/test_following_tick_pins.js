@@ -197,7 +197,7 @@ const NO_PULL = () => ({ enabled: false, target: null, puller: null, engageable:
 function world(options = {}) {
     const player = actor('player', { id: 1, x: 0, y: 0, ...(options.player || {}) });
     const bot = actor('bot', { id: 101, x: 100, y: 0, ...(options.bot || {}) });
-    const playerSession = recordedSession('leaderSession', { actor: player });
+    const playerSession = recordedSession('leaderSession', { actor: player, ...(options.leader || {}) });
     const session = recordedSession('session', {
         partyCompanion: true,
         followPlayerSession: playerSession,
@@ -495,8 +495,11 @@ pin('newbie_buffs_wait_for_route_retry', {
     expect: (w) => assert.strictEqual(w.session.roleDecision.reason, 'wait_for_newbie_guide_route')
 });
 
+// A bot leader's companion still settles its own errands in town; a
+// player's companion does not (town_errand_waits_for_player_order).
 pin('town_errand_equipment_purchase', {
     world: {
+        leader: { botSession: true },
         returns: {
             'TownPathfinder.isInsideTown': () => true,
             'CompanionEquipmentShopping.planErrand': () => ({ kind: 'npc_equipment_purchase', itemName: 'Sword', itemId: 5, target: { town: 'Gludin', name: 'Smith' } })
@@ -504,6 +507,17 @@ pin('town_errand_equipment_purchase', {
         botAI: { getClosestTown: () => ({ x: 0, y: 0, name: 'Gludin' }) }
     },
     expect: (w) => assert.strictEqual(w.session.plan, 'shopping')
+});
+
+pin('town_errand_waits_for_player_order', {
+    world: {
+        returns: {
+            'TownPathfinder.isInsideTown': () => true,
+            'CompanionEquipmentShopping.planErrand': () => ({ kind: 'npc_equipment_purchase', itemName: 'Sword', itemId: 5, target: { town: 'Gludin', name: 'Smith' } })
+        },
+        botAI: { getClosestTown: () => ({ x: 0, y: 0, name: 'Gludin' }) }
+    },
+    expect: (w) => assert.strictEqual(w.session.plan, 'following')
 });
 
 pin('town_visit_rebuff', {
