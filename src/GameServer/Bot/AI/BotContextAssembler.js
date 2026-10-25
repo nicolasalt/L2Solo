@@ -2,8 +2,9 @@ const DiagnosticConfig = require('../Population/PopulationConfig');
 const BotBrainContext = invoke('GameServer/Bot/AI/BotBrainContext');
 const BotEventJournal = invoke('GameServer/Bot/AI/BotEventJournal');
 
-const DEFAULT_BUDGET = 1200;
-const HARD_MAX_TOKENS = 1800;
+// The always-on kit (skills, bag, equipment) is part of the budget.
+const DEFAULT_BUDGET = 2400;
+const HARD_MAX_TOKENS = 3200;
 
 function estimateTokens(value) {
     if (value === null || value === undefined) return 0;
@@ -95,9 +96,10 @@ async function assemble(input = {}) {
         bot = merchantSlice
             ? BotBrainContext.compactMerchantStatus(session, status, requestContext.playerSession)
             : BotBrainContext.compactStatus(session, status, text, {
-                includeInventory: itemIntent,
-                includeSkills: skillIntent,
-                includeEquipment: itemIntent || skillIntent
+                // Always on: a bot that cannot see its kit says "not in my kit".
+                includeInventory: true,
+                includeSkills: true,
+                includeEquipment: true
             });
     } catch (_) {
         bot = merchantSlice && status?.available

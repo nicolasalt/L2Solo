@@ -6,10 +6,16 @@
 const DEFAULT_TTL_MS = 15 * 60 * 1000;
 const MIN_TTL_MS = 5 * 1000;
 const MAX_TTL_MS = 30 * 60 * 1000;
+// Leader orders about skills and rules last until the party ends (the overlay
+// is cleared on party detach); this bound only stops a forgotten session.
+const PARTY_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_SKILL_PRIORITIES = 12;
 const MAX_SKILL_WEIGHT = 50;
 const MAX_BUFF_POLICIES = 24;
 const STANCES = new Set(['balanced', 'aggressive', 'defensive', 'ranged']);
+// Named switches a party leader can flip to override a built-in caution rule.
+const OVERRIDES = new Set(['ignore_level_limits', 'engage_raid', 'no_retreat', 'spend_all_mp']);
+const MAX_BLOCKED_SKILLS = 24;
 
 function now() {
     return Date.now();
@@ -23,6 +29,28 @@ function ttl(value) {
     const requested = Number(value);
     if (!Number.isFinite(requested)) return DEFAULT_TTL_MS;
     return clamp(Math.floor(requested), MIN_TTL_MS, MAX_TTL_MS);
+}
+
+function normalizeOverrides(value) {
+    if (!Array.isArray(value)) return [];
+    return [...new Set(value.map((entry) => String(entry || '').trim().toLowerCase()))]
+        .filter((entry) => OVERRIDES.has(entry));
+}
+
+function normalizeBlockedSkills(value) {
+    if (!Array.isArray(value)) return [];
+    return [...new Set(value.map(Number))].filter((id) => id > 0).slice(0, MAX_BLOCKED_SKILLS);
+}
+
+// noDebuffs drops enemy debuffs from every rotation; rechargeBelow (0..1)
+// makes a healer Recharge a party member under that MP ratio, even in combat.
+function normalizeSkillRules(value) {
+    if (!value || typeof value !== 'object') return {};
+    const rules = {};
+    if (value.noDebuffs === true) rules.noDebuffs = true;
+    const recharge = Number(value.rechargeBelow);
+    if (Number.isFinite(recharge) && recharge > 0) rules.rechargeBelow = clamp(recharge, 0.05, 0.95);
+    return rules;
 }
 
 function partyCompanionService() {
@@ -124,7 +152,16 @@ function set(session, patch = {}, context = {}) {
         reason: String(context.reason || patch.reason || previous.reason || 'player_request').slice(0, 160),
         createdAt: Number(previous.createdAt || now()),
         updatedAt: now(),
-        expiresAt: now() + ttl(patch.ttlMs ?? context.ttlMs ?? (previous.expiresAt ? previous.expiresAt - now() : DEFAULT_TTL_MS)),
+        expiresAt: context.lifetime === 'party'
+            ? Math.max(Number(previous.expiresAt || 0), now() + PARTY_TTL_MS)
+            : Math.max(
+                previous.lifetime === 'party' ? Number(previous.expiresAt || 0) : 0,
+                now() + ttl(patch.ttlMs ?? context.ttlMs ?? (previous.expiresAt ? previous.expiresAt - now() : DEFAULT_TTL_MS))
+            ),
+        lifetime: context.lifetime === 'party' || previous.lifetime === 'party' ? 'party' : 'ttl',
+        overrides: normalizeOverrides(patch.overrides ?? previous.overrides),
+        blockedSkills: normalizeBlockedSkills(patch.blockedSkills ?? previous.blockedSkills),
+        skillRules: normalizeSkillRules(patch.skillRules ?? previous.skillRules),
         skillPriorities: normalizePriorities(patch.skillPriorities ?? previous.skillPriorities),
         combatStance: normalizeStance(patch.combatStance ?? previous.combatStance),
         buffPolicy: normalizeBuffPolicy(patch.buffPolicy ?? previous.buffPolicy),
@@ -144,6 +181,9 @@ function set(session, patch = {}, context = {}) {
     if (patch.combatStance === null) updated.combatStance = null;
     if (patch.buffPolicy === null) updated.buffPolicy = { excluded: [], allowed: [] };
     if (patch.pull === null) updated.pull = null;
+    if (patch.overrides === null) updated.overrides = [];
+    if (patch.blockedSkills === null) updated.blockedSkills = [];
+    if (patch.skillRules === null) updated.skillRules = {};
 
     session.hotPolicyOverlay = updated;
     return { ...updated, skillPriorities: { ...updated.skillPriorities }, pull: updated.pull && { ...updated.pull } };
@@ -174,8 +214,29 @@ function combatPolicy(session) {
     return {
         skillPriorities: { ...(overlay?.skillPriorities || {}) },
         party: session?.partyCompanion === true || !!session?.hotBackgroundPartyId,
-        stance: overlay?.combatStance || 'balanced'
+        stance: overlay?.combatStance || 'balanced',
+        spendAllMp: (overlay?.overrides || []).includes('spend_all_mp'),
+        blockedSkills: [...(overlay?.blockedSkills || [])]
     };
+}
+
+function hasOverride(session, name) {
+    return (get(session)?.overrides || []).includes(name);
+}
+
+// A skill the leader told the bot not to use: blocked by id, or an enemy
+// debuff while the no-debuffs rule is on.
+function skillBlocked(session, skill) {
+    const overlay = session?.hotPolicyOverlay ? get(session) : null;
+    if (!overlay || !skill) return false;
+    if ((overlay.blockedSkills || []).includes(Number(skill.fetchSelfId?.()))) return true;
+    if (overlay.skillRules?.noDebuffs !== true) return false;
+    const semantic = skill.fetchSemantic?.() || {};
+    return semantic.effectType === 'debuff' && skill.fetchTargetKind?.() === 'enemy';
+}
+
+function skillRules(session) {
+    return { ...(get(session)?.skillRules || {}) };
 }
 
 function status(session) {
@@ -195,7 +256,10 @@ function status(session) {
             excluded: [...(overlay.buffPolicy?.excluded || [])],
             allowed: [...(overlay.buffPolicy?.allowed || [])]
         },
-        skillPriorities: { ...(overlay.skillPriorities || {}) }
+        skillPriorities: { ...(overlay.skillPriorities || {}) },
+        overrides: [...(overlay.overrides || [])],
+        blockedSkills: [...(overlay.blockedSkills || [])],
+        skillRules: { ...(overlay.skillRules || {}) }
     };
 }
 
@@ -203,6 +267,7 @@ module.exports = {
     DEFAULT_TTL_MS,
     MAX_SKILL_WEIGHT,
     MAX_BUFF_POLICIES,
+    OVERRIDES: [...OVERRIDES],
     STANCES: [...STANCES],
     clear,
     clearForCold,
@@ -210,6 +275,9 @@ module.exports = {
     clearForPartyDetach,
     combatPolicy,
     get,
+    hasOverride,
+    skillBlocked,
+    skillRules,
     normalizePriorities,
     normalizeStance,
     normalizeBuffPolicy,

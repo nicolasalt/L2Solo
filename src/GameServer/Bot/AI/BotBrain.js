@@ -206,8 +206,82 @@ function schema(allowedActions = BotAgentTools.ACTIONS, session = null) {
             tradeAmount: {
                 type: 'number',
                 minimum: 0,
-                maximum: 10000,
-                description: 'Bounded quantity for an outbound resource trade line.'
+                description: 'Quantity for an outbound resource trade line.'
+            },
+            targetName: {
+                type: 'string',
+                description: 'attack_target: a visible mob name when the leader names one; empty means the leader\'s current target.'
+            },
+            scope: {
+                type: 'string',
+                enum: ['', 'party', 'self'],
+                description: 'attack_target and override_rule: party (default, every companion) or self (only this bot).'
+            },
+            combatMode: {
+                type: 'string',
+                enum: ['', 'assist', 'protect', 'passive'],
+                description: 'Party combat mode for set_combat_mode.'
+            },
+            healTargetName: {
+                type: 'string',
+                description: 'focus_heal: party member name, or "me" for the leader.'
+            },
+            skillName: {
+                type: 'string',
+                description: 'A learned skill by name (from bot.skills.kit) for use_skill or set_skill_priority.'
+            },
+            skillNames: {
+                type: 'array',
+                items: { type: 'string' },
+                maxItems: 8,
+                description: 'Skill names for prefer_skill, avoid_skill or clear_skill_preferences. A family word such as "fire" covers every matching learned skill.'
+            },
+            skillTarget: {
+                type: 'string',
+                description: 'use_skill target: "target" (leader\'s target), a party member name, "me" (the leader) or "self".'
+            },
+            skillRule: {
+                type: 'string',
+                enum: ['', 'no_debuffs', 'allow_debuffs', 'recharge_below', 'no_recharge_rule', 'clear'],
+                description: 'Rotation rule for set_skill_rule.'
+            },
+            ruleValue: {
+                type: 'number',
+                minimum: 0,
+                maximum: 100,
+                description: 'recharge_below: MP percent threshold, e.g. 40.'
+            },
+            overrideName: {
+                type: 'string',
+                enum: ['', 'ignore_level_limits', 'engage_raid', 'no_retreat', 'spend_all_mp'],
+                description: 'Built-in caution rule for override_rule.'
+            },
+            overrideEnabled: {
+                type: 'boolean',
+                description: 'override_rule: true turns the override on, false turns it off.'
+            },
+            itemName: {
+                type: 'string',
+                description: 'Item by name: for buy_for_self/fetch_resources a shop item ("D-grade spiritshot"), for give_resources/equip_candidate an item in bot.inventory.bag.'
+            },
+            amount: {
+                type: 'number',
+                minimum: 0,
+                description: 'Quantity for buy_for_self, fetch_resources or give_resources.'
+            },
+            adenaAmount: {
+                type: ['number', 'string'],
+                description: 'give_adena: a number, or "all".'
+            },
+            destinationName: {
+                type: 'string',
+                description: 'go_to: an NPC name (e.g. "Grocer", "Gatekeeper") or a player name.'
+            },
+            steps: {
+                type: 'array',
+                maxItems: 4,
+                items: { type: 'object' },
+                description: 'plan_steps: up to four {action, ...fields} objects, run in order.'
             },
             supplyItemId: {
                 type: 'number',
@@ -318,8 +392,16 @@ function systemPrompt(session = null) {
     if (session?.plan === 'merchant') return merchantSystemPrompt();
     return [
         BotDialogueStyle,
-        'The deterministic server code handles combat, pathfinding, HP/MP, loot, and safety.',
-        'Only choose one small, high-level social or intent change for the explicit player message in this turn.',
+        'The deterministic server code handles moment-to-moment combat, pathfinding, HP/MP and loot; your tools steer it.',
+        'The party leader commands this bot. Carry out the leader\'s request with the one tool that does it: attack_target, set_combat_mode, retreat_party, focus_heal, use_skill, prefer_skill, avoid_skill, set_skill_rule, override_rule, buy_for_self, upgrade_gear, give_adena, give_resources, go_to, plan_steps and the others listed. Persona colours the wording, never obedience: never argue with or refuse a reasonable order because of personality.',
+        'Refuse only what the server cannot do, and then say the concrete reason (not learned, not enough Adena and how much, too far, the raid curse). The server reports a rejected tool to the player itself.',
+        'Honesty: a reply may claim an action only when that action is the tool you chose this turn. With action=say, never write "on it", "coming", "on my way", "buying", "casting", "attacking" or similar. If no tool does what was asked, say plainly that you cannot do that.',
+        'Your kit: bot.skills.kit lists every learned active skill as [skillId, name, level, mpCost, reuseSeconds, kind] and bot.inventory.bag every bag item as [objectId, name, amount]; bot.equipment shows what you wear. Answer questions about your skills, weapons and items from these lists, and never call a listed skill or item missing.',
+        'Tools take names: skillName/skillNames, itemName, destinationName, targetName, healTargetName. The server matches names loosely, so pass the words the player used or the listed name.',
+        'Built-in caution (level limits, keeping clear of raid bosses, retreating, keeping an MP reserve) yields to the leader: attack_target overrides level and raid-safety rules for that fight, override_rule for longer. Hard limits stay: death, unreachable targets, unlearned skills, and the C4 raid curse (a bot more than 8 levels above a raid boss is silenced or petrified for fighting it).',
+        'For an order with several steps ("go to the grocer, buy potions, come back"), use plan_steps with the steps in order.',
+        'For a risky order (a pull likely to wipe the party, or spending nearly all of the bot\'s Adena), ask once with say, naming the risk. When the leader confirms, carry it out with the tool and do not ask again.',
+        'Choose exactly one action for the explicit player message in this turn.',
         'Never invent a background request, ambient prompt, player intent, or private internal event.',
         'Claims about game facts and actions must be grounded in the authoritative bot state and conversation context. Ordinary opinions and off-topic conversation do not require a matching game-state field.',
         'follow_player only means approach a visible player unless the bot is already an invited party companion.',
@@ -333,7 +415,7 @@ function systemPrompt(session = null) {
         'When the player asks to stop pulling and return, prefer stop_pulling_and_return so both server mutations are applied as one bounded workflow.',
         'Skill priorities are bounded hints to the deterministic offensive scorer. Emergency healing, defense, resurrection, cooldowns, MP, range, and C4 compatibility always win.',
         'Equipment tools may only use safe candidates from actual inventory and native persistence. Never equip quest, incompatible, over-grade, or non-upgrade items.',
-        'The persona describes tone and high-level preferences only. It never overrides safety, current game state, or the allowed actions.',
+        'The persona describes tone only. It never overrides the leader\'s orders, current game state, or the allowed actions.',
         'Ambient mood and intent are server-owned soft context. Treat an active ambient scene as factual only when bot.ambient.scene is present; never start or claim a scene from mood alone.',
         'The contextFragments field is bounded and includes recent authoritative events; treat summaries as memory, never as permission to perform an action. Action metadata is authoritative only when serverApplied or actionResult.ok is true.',
         'Resource-gift trade tools can open a native window only with the current party leader; give_resources opens the window and displays the requested line in one server action. Companion negotiation tools use only the active real player pair, reserve safe inventory without mutating it, expose only server-owned bounds, allow at most three negotiation rounds, and release reservations on cancel/expiry. Never claim completion before native player confirmation.',
@@ -387,8 +469,7 @@ function userPayload(event, session, status, visiblePlayers, text, requestContex
         } : {
             keepReplyShort: true,
             splitLongRepliesIntoChatLines: true,
-            avoidSpam: true,
-            noCombatMicromanagement: true
+            avoidSpam: true
         },
         conversation: requestContext?.conversation || null,
         contextFragments: assembled?.fragments || null,
@@ -510,6 +591,82 @@ function validateDecisionResult(result, session) {
         };
     }
     return result;
+}
+
+// W3 honesty guard: a say reply that claims an action no tool ran.
+const ACTION_CLAIM = /\b(?:on it|on my way|omw|be right there|coming(?: over| to you| now| right)?|heading (?:to|over|out|back|there)|moving (?:to|out|in|over)|i'?m going|going to (?:buy|get|cast|attack|use|go|pull|heal)|i'?ll (?:go|buy|get|cast|attack|use|head|come|grab|bring|pull|heal|recharge|switch|equip|kill|stop)|buying|casting|attacking|engaging|pulling now|will do|right away|consider it done|switching to|equipping)\b/i;
+const HONEST_FALLBACK_REPLY = "I can't actually do that right now.";
+
+function claimsUnbackedAction(decision) {
+    return decision?.action === 'say' && ACTION_CLAIM.test(String(decision.reply || ''));
+}
+
+function addUsage(first = {}, second = {}) {
+    const sum = (key) => Number(first?.[key] || 0) + Number(second?.[key] || 0);
+    return { ...first, promptTokens: sum('promptTokens'), completionTokens: sum('completionTokens'), totalTokens: sum('totalTokens'),
+        cost: Number.isFinite(Number(first?.cost)) || Number.isFinite(Number(second?.cost)) ? sum('cost') : first?.cost };
+}
+
+async function enforceHonesty(decision, payload, cfg, session, requestContext, visiblePlayers) {
+    if (!claimsUnbackedAction(decision)) return decision;
+    const retryPayload = {
+        ...payload,
+        honestyCheck: {
+            previousReply: decision.reply,
+            instruction: 'Your previous answer claimed an action but chose action=say, so nothing would happen. Choose the tool that performs the request, or reply truthfully that you cannot do it.'
+        }
+    };
+    let retried = null;
+    try {
+        retried = validateDecisionResult(await requestDecision(retryPayload, cfg, session, requestContext, visiblePlayers), session);
+    } catch (_) {
+        retried = null;
+    }
+    let result = retried && retried.ok !== false
+        ? { ...retried, usage: addUsage(decision.usage, retried.usage), honestyRetried: true }
+        : { ...decision, honestyRetried: true };
+    if (claimsUnbackedAction(result)) {
+        result = { ...result, reply: HONEST_FALLBACK_REPLY, reason: `honesty_guard:${String(result.reason || '').slice(0, 80)}` };
+    }
+    return result;
+}
+
+// W8: an order to the whole party ("all use fire spells", "everyone buy
+// potions") runs on every companion, with one reply.
+const FAN_OUT_ACTIONS = new Set([
+    'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'use_skill',
+    'buy_for_self', 'upgrade_gear', 'optimize_equipment', 'set_combat_stance', 'rest'
+]);
+
+function fanOutTargets(session, requestContext, text) {
+    if (requestContext?.channel !== 'party_chat' && requestContext?.conversationTurn?.channel !== 'party_chat') return [];
+    if (session?.partyCompanion !== true || !session.followPlayerSession) return [];
+    const PartyDialogueRouter = invoke('GameServer/Bot/AI/PartyDialogueRouter');
+    const addressedName = String(session.actor?.fetchName?.() || '').toLowerCase();
+    const value = String(text || '').toLowerCase();
+    if (!PartyDialogueRouter.isGroupAddress(value) || (addressedName && value.includes(addressedName))) return [];
+    return invoke('GameServer/Bot/AI/BotPartyOrders').companions(session.followPlayerSession)
+        .filter((member) => member !== session);
+}
+
+async function fanOutDecision(session, decision, requestContext, text) {
+    if (!FAN_OUT_ACTIONS.has(decision?.action)) return [];
+    const others = fanOutTargets(session, requestContext, text);
+    const done = [];
+    for (const other of others) {
+        const turnId = `${requestContext?.conversationTurn?.turnId || requestContext?.requestId || 'turn'}:fan:${other.actor.fetchId()}`;
+        try {
+            const result = await BotAgentTools.execute(other, { ...decision, reply: '' }, [], {
+                ...requestContext,
+                requestId: turnId,
+                conversationTurn: { ...(requestContext?.conversationTurn || {}), turnId },
+                preparedWorldRevision: null,
+                worldRevision: null
+            });
+            if (result?.applied) done.push(other.actor.fetchName());
+        } catch (_) { /* one companion failing does not undo the others */ }
+    }
+    return done;
 }
 
 function isPartyCandidateRequest(text) {
@@ -844,6 +1001,7 @@ const BotBrain = {
     },
 
     applyPartyPolicy,
+    claimsUnbackedAction,
     isPartyRequest,
     isPartyCandidateRequest,
 
@@ -1137,6 +1295,7 @@ const BotBrain = {
                     };
                     return providerResult;
                 }
+                providerResult = await enforceHonesty(providerResult, payload, cfg, session, requestContext, visiblePlayers);
                 providerResult = applyPartyPolicy(session, providerResult, requestContext, text);
                 recordInferenceEvent(session, event, providerResult, requestContext);
                 const actionResult = await LangfuseTracing.withObservation(
@@ -1150,6 +1309,12 @@ const BotBrain = {
                     async () => applyDecision(session, providerResult, visiblePlayers, requestContext),
                     'tool'
                 );
+                if (actionResult.applied) {
+                    const alsoDone = await fanOutDecision(session, providerResult, requestContext, text);
+                    if (alsoDone.length && requestContext?.playerSession?.actor) {
+                        invoke('GameServer/Bot/BotManager').botTell(session, requestContext.playerSession, `Same for ${alsoDone.join(', ')}.`);
+                    }
+                }
                 const playerVisibleReply = actionResult.playerVisibleReply ||
                     (actionResult.applied && actionResult.replyDelivered ? providerResult.reply || null : null) ||
                     (!actionResult.applied ? BotAgentTools.rejectionReply(actionResult) : null);

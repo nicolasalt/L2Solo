@@ -102,6 +102,9 @@ function parse(state, text, playerSession = null) {
     const quantityMatch = lower.match(/(?:x|х|×)\s*(\d+)/i);
     const quantity = quantityMatch ? Number(quantityMatch[1]) : 1;
     const line = mentionedLine(shop.store.items, lower);
+    // Neither a price nor a listed item: ordinary talk ("buy shots for me"),
+    // not a negotiation. Answering it with the haggling script loops.
+    if (!price && !line && !/\b(?:shop|store|price|stock|sell(?:ing)?)\b|лавк|магазин|цен/i.test(lower)) return null;
     if (!price || !line || !Number.isSafeInteger(price) || !Number.isSafeInteger(quantity)) {
         return { ...shop, action: 'help' };
     }

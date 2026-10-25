@@ -91,6 +91,7 @@ function evaluateCandidate(bot, target, skill, role, policy = {}, plannedCharges
         return null;
     };
     if (!skill || skill.fetchPassive?.()) return null;
+    if ((policy.blockedSkills || []).includes(Number(skill.fetchSelfId?.()))) return reject('leader_blocked');
     if (target?.isDead?.() === true || target?.state?.fetchDead?.() === true || target?.fetchHp?.() <= 0) return reject('target_dead');
     if (Feedback.blocked(bot,target,skill)) return reject('native_rejection_backoff');
     // SkillRequest rejects a skill still on reuse after the combat planner has
@@ -138,7 +139,7 @@ function evaluateCandidate(bot, target, skill, role, policy = {}, plannedCharges
     // A mage's staff is the primary weapon. Keeping a generic MP reserve made
     // a mage walk into melee even though it could still afford a nuke.
     const classProfile = policy.classProfile || ClassPolicy.profileFor(bot, policy);
-    const reserve = classProfile.supported ? classProfile.manaReserve : (policy.pvp ? 0 : reserveRatio(role));
+    const reserve = policy.spendAllMp ? 0 : classProfile.supported ? classProfile.manaReserve : (policy.pvp ? 0 : reserveRatio(role));
     if (cost > mp || (role !== 'mage' && (mp - cost) / maxMp < reserve)) return reject('mp_budget');
 
     const type = skill.fetchSkillType();
@@ -220,7 +221,7 @@ function selectChargePlan(bot, role, policy = {}, target = null) {
     const mp = Math.max(0, Number(bot.fetchMp?.()) || 0);
     const maxMp = Math.max(1, Number(bot.fetchMaxMp?.()) || mp || 1);
     const profile = policy.classProfile || ClassPolicy.profileFor(bot, policy);
-    const reserve = profile.supported ? profile.manaReserve : (policy.pvp ? 0 : reserveRatio(role));
+    const reserve = policy.spendAllMp ? 0 : profile.supported ? profile.manaReserve : (policy.pvp ? 0 : reserveRatio(role));
     const preparation = skills
         .filter((skill) => {
             if (!skill || skill.fetchPassive?.() || bot.canUseSkill?.(skill) === false || Feedback.blocked(bot,bot,skill)) return false;

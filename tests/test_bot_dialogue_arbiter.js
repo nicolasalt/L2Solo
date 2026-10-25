@@ -205,8 +205,13 @@ async function main() {
         delete player.botDialogueResponderAt;
         PartyDialogueState.reset(player);
         routes.length = 0;
-        await BotManager.handlePlayerSpeak(player, { kind: 3, text: 'party, regroup' });
+        await BotManager.handlePlayerSpeak(player, { kind: 3, text: 'party, what do you think of this spot?' });
         assert.deepStrictEqual(routes, ['Aria'], 'party chat must select one companion responder');
+
+        // A plain order is carried out by the fast path, without the model.
+        routes.length = 0;
+        await BotManager.handlePlayerSpeak(player, { kind: 3, text: 'party, regroup' });
+        assert.deepStrictEqual(routes, [], 'a plain party order does not wait for the model');
     } finally {
         BotBrain.maybeThink = originalBrain;
         BotBrain.isEnabled = originalEnabled;

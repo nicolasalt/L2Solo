@@ -111,6 +111,16 @@ function openManufactureWindow(session, crafter) {
     session.dataSendToMe(ServerResponse.recipeShopSellList(crafter, session.actor));
 }
 
+// The leader targets a raid boss its companions cannot fight: they say so
+// now, before the pull, instead of silently holding back.
+function warnRaidCurse(session, npc) {
+    try {
+        const Safety = invoke('GameServer/Bot/AI/BotRaidSafety');
+        if (!Safety.isProtectedRaidEntity(npc)) return;
+        invoke('GameServer/Bot/AI/BotPartyOrders').warnRaidCurse(session, Safety.raidBossFor(npc));
+    } catch (_) { /* a warning never blocks targeting */ }
+}
+
 function select(session, actor, data) {
     const Generics = invoke(path.actor);
     // AI target refreshes are not client double-clicks. Combat planners
@@ -185,6 +195,7 @@ function select(session, actor, data) {
             actor.setDestId(npc.fetchId());
             session.dataSendToMe(ServerResponse.destSelected(actor.fetchDestId(), actor.fetchLevel() - npc.fetchLevel()));
             actor.statusUpdateVitals(npc);
+            if (!selectionOnly) warnRaidCurse(session, npc);
         }
         else { // Second click on same Creature
             if (npc.fetchIsSummon?.() === true && Number(npc.fetchOwnerId?.()) === Number(actor.fetchId())) {

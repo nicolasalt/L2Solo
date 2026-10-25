@@ -21,7 +21,8 @@ const dependencies = {
     'GameServer/Social/InteractionMemoryRuntime': { assess: () => ({ ready: true }) },
     'GameServer/Clan/ClanService': { findById: id => id === 77 ? { members } : null },
     // Honest travel off (the default): a trip stays a busy reason.
-    'GameServer/Bot/Population/ColdTrip': { travellerAnswers: () => false, positionAt: state => state.loc }
+    'GameServer/Bot/Population/ColdTrip': { travellerAnswers: () => false, positionAt: state => state.loc },
+    'GameServer/Bot/Population/PopulationConfig': { partyHistoryEnabled: true, alwaysJoinPlayerParty: false }
 };
 const context = {
     module: { exports: {} },

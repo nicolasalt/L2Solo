@@ -860,6 +860,12 @@ const BotManager = {
         const groupAddress = /\b(bot|bots|guys|party|team|help|everyone|everybody|companions|all)\b/.test(text) || /(бот|боты|ребят|народ|пати|команда|кто-нибудь)/.test(text);
         const partyChannel = Number(data.kind) === 3;
 
+        // Plain party orders ("attack", "all back to me", "help!") run on
+        // every companion at once, without waiting for the model. With the
+        // LLM off the legacy chat commands below keep handling them.
+        if (llmEnabled && (partyChannel || Number(data.kind) === 0)
+            && invoke('GameServer/Bot/AI/BotPartyOrders').handleChat(playerSession, rawText).handled) return;
+
         const dialogueState = PartyDialogueState.snapshot(playerSession);
         const cheapRouterAvailable = llmEnabled && partyChannel && PartyLLMRouter.enabled() && !dialogueState?.routerInFlightAt;
         const routeMetadata = {
@@ -993,6 +999,13 @@ const BotManager = {
                         candidateId: chosen?.id || null,
                         reason: routerResult?.reason || reason
                     }, LangfuseTracing.observationStatus(routerResult));
+                    // An order to the party never gets "which member?": the
+                    // spokesperson answers and the tools fan out to everyone.
+                    // Only a name that really matches two members is worth a question.
+                    const namesClash = (speech.deterministicRoute.matches?.length || 0) > 1;
+                    if (routerResult?.route === 'clarify' && chosen && (!namesClash || PartyDialogueRouter.isGroupAddress(rawText))) {
+                        return this.dispatchPlayerSpeech(speech, chosen.session, 'router_clarify_group_order');
+                    }
                     if (routerResult?.route === 'clarify') {
                         return chosen
                             ? this.deliverPlayerSpeechClarification(speech, chosen, speech.deterministicRoute.matches)

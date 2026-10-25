@@ -7,7 +7,24 @@ const definitions = new Map();
 const SOFT_FRESHNESS_ACTIONS = new Set([
     'none', 'say', 'follow_player', 'regroup_party', 'stay_here', 'hunt', 'rest',
     'set_pull_policy', 'stop_pulling_and_return', 'assign_puller', 'unassign_puller',
-    'set_combat_stance'
+    'set_combat_stance',
+    // Leader orders: the bot keeps moving while the model thinks, so a moved
+    // bot must not turn "attack" into "the situation changed".
+    'attack_target',
+    'set_combat_mode',
+    'retreat_party',
+    'focus_heal',
+    'use_skill',
+    'prefer_skill',
+    'avoid_skill',
+    'clear_skill_preferences',
+    'set_skill_rule',
+    'override_rule',
+    'buy_for_self',
+    'upgrade_gear',
+    'give_adena',
+    'go_to',
+    'plan_steps'
 ]);
 
 function text(value, max = 160) {
@@ -83,7 +100,8 @@ const PK_LOCKED_REGISTRY_ACTIONS = new Set([
     'set_skill_priority', 'clear_skill_priority', 'set_combat_stance',
     'list_safe_loadouts', 'equip_candidate', 'optimize_equipment', 'list_party_candidates',
     'propose_trade', 'give_resources', 'fetch_resources', 'offer_resources', 'update_trade_offer', 'cancel_trade',
-    'quote_item', 'counter_offer', 'accept_price', 'decline_price', 'open_negotiated_trade'
+    'quote_item', 'counter_offer', 'accept_price', 'decline_price', 'open_negotiated_trade',
+'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps'
 ]);
 
 function requiresFreshWorld(action) {

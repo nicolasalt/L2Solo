@@ -53,7 +53,22 @@ const ACTIONS = [
     'counter_offer',
     'accept_price',
     'decline_price',
-    'open_negotiated_trade'
+    'open_negotiated_trade',
+    'attack_target',
+    'set_combat_mode',
+    'retreat_party',
+    'focus_heal',
+    'use_skill',
+    'prefer_skill',
+    'avoid_skill',
+    'clear_skill_preferences',
+    'set_skill_rule',
+    'override_rule',
+    'buy_for_self',
+    'upgrade_gear',
+    'give_adena',
+    'go_to',
+    'plan_steps'
 ];
 const NON_MUTATING_ACTIONS = new Set(['none', 'say', 'list_safe_loadouts', 'list_party_candidates']);
 
@@ -64,7 +79,8 @@ const PK_LOCKED_ACTIONS = new Set([
     'set_skill_priority', 'clear_skill_priority', 'set_combat_stance',
     'list_safe_loadouts', 'equip_candidate', 'optimize_equipment', 'list_party_candidates', 'request_player_join_party',
     'propose_trade', 'give_resources', 'offer_resources', 'update_trade_offer', 'cancel_trade',
-    'quote_item', 'counter_offer', 'accept_price', 'decline_price', 'open_negotiated_trade'
+    'quote_item', 'counter_offer', 'accept_price', 'decline_price', 'open_negotiated_trade',
+'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps'
 ]);
 
 function clean(text) {
@@ -570,7 +586,11 @@ function learnedSkill(session, skillId) {
 
 function setSkillPriority(context) {
     const session = context.session;
-    const skillId = Number(context.decision.skillId || 0);
+    const named = context.decision.skillName
+        ? invoke('GameServer/Bot/AI/BotNameResolver').resolveSkill(session.actor, context.decision.skillName, context.decision.skillId)
+        : null;
+    if (named && !named.skill) return { applied: false, reason: named.reason, alternatives: named.alternatives };
+    const skillId = Number(named?.skill?.fetchSelfId?.() || context.decision.skillId || 0);
     const resolved = learnedSkill(session, skillId);
     if (resolved.reason) return { applied: false, reason: resolved.reason };
 
@@ -625,7 +645,11 @@ function listSafeLoadouts(context) {
 }
 
 function equipCandidate(context) {
-    const result = BotEquipmentUpgrade.applyCandidate(context.session, context.decision.itemId);
+    const named = context.decision.itemName
+        ? invoke('GameServer/Bot/AI/BotNameResolver').resolveInventoryItem(context.session.actor, context.decision.itemName, context.decision.itemId)
+        : null;
+    if (named && !named.item) return { applied: false, reason: named.reason, alternatives: named.alternatives };
+    const result = BotEquipmentUpgrade.applyCandidate(context.session, named?.item?.fetchId?.() || context.decision.itemId);
     if (!result.applied) return result;
     return { ...result, policy: HotBotPolicyOverlay.status(context.session) };
 }
@@ -658,9 +682,15 @@ function proposeTrade(context) {
 
 function giveResources(context) {
     const player = context?.requestContext?.playerSession;
-    const itemId = context.decision.tradeItemId || context.decision.itemId;
+    const named = context.decision.itemName
+        ? invoke('GameServer/Bot/AI/BotNameResolver').resolveInventoryItem(context.session.actor, context.decision.itemName,
+            context.decision.tradeItemId || context.decision.itemId)
+        : null;
+    if (named && !named.item) return { applied: false, reason: named.reason, alternatives: named.alternatives };
+    const itemId = named?.item?.fetchId?.() || context.decision.tradeItemId || context.decision.itemId;
     const amount = context.decision.tradeAmount || context.decision.amount;
-    const result = BotTradeService.startBotTradeWithOffer(context.session, player, itemId, amount);
+    // The party leader gets what it asks for: party bots belong to the leader.
+    const result = BotTradeService.startBotTradeWithOffer(context.session, player, itemId, amount, { leaderGift: true });
     if (!result.ok) return { applied: false, reason: result.reason };
     const line = { objectId: result.line.objectId, selfId: result.line.selfId, name: result.line.name, count: result.line.count };
     return {
@@ -676,15 +706,16 @@ function giveResources(context) {
 
 function fetchResources(context) {
     const player = context?.requestContext?.playerSession;
-    const requestedName = context.decision.supplyItemName;
+    const requestedName = context.decision.supplyItemName || context.decision.itemName;
     const resolved = !context.decision.supplyItemId && requestedName
-        ? invoke('GameServer/Bot/Economy/MarketOpportunity').resolveSupplyItem(requestedName)
+        ? invoke('GameServer/Bot/AI/BotNameResolver').resolveSupplyItem(requestedName)
         : null;
+    if (resolved && !resolved.selfId) return { applied: false, reason: resolved.reason, alternatives: resolved.alternatives };
     const result = invoke('GameServer/Bot/AI/BotSupplyErrand').request(
         context.session,
         player,
         context.decision.supplyItemId || resolved?.selfId,
-        context.decision.supplyAmount
+        context.decision.supplyAmount || context.decision.amount
     );
     if (!result.ok) return { applied: false, reason: result.reason, ...result };
     return {
@@ -803,6 +834,469 @@ function openNegotiatedTrade(context) {
     return { applied: true, reason: 'native_trade_open', trade: result.trade, negotiation: result.negotiation };
 }
 
+// ---- Leader orders (W4-W6, W10). Party-wide orders run on every companion
+// of the leader through BotPartyOrders; the rest change this bot only.
+
+function partyOrders() {
+    return invoke('GameServer/Bot/AI/BotPartyOrders');
+}
+
+function nameResolver() {
+    return invoke('GameServer/Bot/AI/BotNameResolver');
+}
+
+function skillNotFound(reason, alternatives = [], requested = '') {
+    return {
+        applied: false,
+        reason,
+        alternatives,
+        requested: String(requested || '').slice(0, 64)
+    };
+}
+
+function partyOrderResult(result) {
+    if (!result.ok) return { applied: false, reason: result.reason, playerVisibleReply: result.reply || null };
+    return {
+        applied: true,
+        reason: result.reason,
+        affected: result.affected || 0,
+        playerVisibleReply: result.reply || null
+    };
+}
+
+function scopedMembers(context) {
+    const leader = partyLeaderFor(context.session);
+    if (String(context.decision.scope || '').toLowerCase() === 'self') return [context.session];
+    return partyOrders().companions(leader);
+}
+
+function visibleNpcByName(bot, name, radius = 2500) {
+    const requested = String(name || '').trim();
+    if (!requested) return null;
+    const World = invoke('GameServer/World/World');
+    const npcs = (World.fetchNpcsInRadius?.(bot.fetchLocX(), bot.fetchLocY(), radius) || [])
+        .filter((npc) => npc?.fetchAttackable?.() === true && !npc.isDead?.());
+    const found = nameResolver().best(requested, npcs, (npc) => String(npc.fetchName?.() || ''));
+    if (found.match) return found.match;
+    const same = npcs.filter((npc) => nameResolver().score(requested, npc.fetchName?.()) >= nameResolver().MIN_SCORE);
+    return same.sort((a, b) => distance2d(bot, a) - distance2d(bot, b))[0] || null;
+}
+
+function attackTarget(context) {
+    const leader = partyLeaderFor(context.session);
+    if (!leader) return { applied: false, reason: 'not_a_party_companion' };
+    const named = context.decision.targetName ? visibleNpcByName(context.session.actor, context.decision.targetName) : null;
+    if (context.decision.targetName && !named && !leader.actor.fetchDestId?.()) {
+        return { applied: false, reason: 'attack_target_not_found', requested: String(context.decision.targetName).slice(0, 64) };
+    }
+    const order = partyOrders().run(leader, { kind: 'attack' }, { targetId: named?.fetchId?.() });
+    if (String(context.decision.scope || '').toLowerCase() === 'self' && order.ok) {
+        order.members.filter((member) => member !== context.session).forEach((member) => { delete member.leaderAttackOrder; });
+    }
+    return partyOrderResult(order);
+}
+
+function setCombatMode(context) {
+    const leader = partyLeaderFor(context.session);
+    if (!leader) return { applied: false, reason: 'not_a_party_companion' };
+    const mode = String(context.decision.combatMode || '').toLowerCase();
+    if (!['assist', 'protect', 'passive'].includes(mode)) return { applied: false, reason: 'invalid_combat_mode' };
+    return partyOrderResult(partyOrders().run(leader, { kind: 'mode', mode }));
+}
+
+function retreatParty(context) {
+    const leader = partyLeaderFor(context.session);
+    if (!leader) return { applied: false, reason: 'not_a_party_companion' };
+    return partyOrderResult(partyOrders().run(leader, { kind: 'retreat' }));
+}
+
+function memberByName(leader, name) {
+    const requested = String(name || '').trim().toLowerCase();
+    if (!requested || /^(?:me|myself|leader|you)$/.test(requested)) return leader;
+    const members = [leader, ...partyOrders().companions(leader)];
+    return members.find((member) => String(member.actor.fetchName?.() || '').toLowerCase() === requested)
+        || nameResolver().best(name, members, (member) => String(member.actor.fetchName?.() || '')).match
+        || null;
+}
+
+function focusHeal(context) {
+    const leader = partyLeaderFor(context.session);
+    if (!leader) return { applied: false, reason: 'not_a_party_companion' };
+    const target = memberByName(leader, context.decision.healTargetName || context.decision.targetPlayerName);
+    if (!target?.actor) return { applied: false, reason: 'heal_target_not_in_party' };
+    const healers = partyOrders().companions(leader).filter((member) => BotRoles.isHealer(member.actor));
+    if (!healers.length) return { applied: false, reason: 'no_party_healer' };
+    const until = Date.now() + Math.min(10 * 60 * 1000, Math.max(30000, Number(context.decision.policyTtlMs || 0) || 5 * 60 * 1000));
+    healers.forEach((member) => {
+        member.focusHealTargetId = Number(target.actor.fetchId());
+        member.focusHealUntil = until;
+    });
+    return {
+        applied: true,
+        reason: 'focus_heal_set',
+        affected: healers.length,
+        playerVisibleReply: `Keeping ${target === leader ? 'you' : target.actor.fetchName()} topped up first.`
+    };
+}
+
+function castTarget(context, skill) {
+    const session = context.session;
+    const bot = session.actor;
+    const leader = partyLeaderFor(session);
+    const kind = String(skill.fetchTargetKind?.() || '');
+    if (['self', 'party', 'ally', 'corpse_ally'].includes(kind)) return bot;
+    const requested = String(context.decision.skillTarget || '').trim();
+    if (kind === 'enemy') {
+        if (requested && !/^(?:my|your|the|our|leader'?s)?\s*target$/i.test(requested)) {
+            const named = visibleNpcByName(bot, requested);
+            if (named) return named;
+        }
+        const World = invoke('GameServer/World/World');
+        const NpcObjectIndex = require('../../World/NpcObjectIndex');
+        const targetId = Number(leader?.actor?.fetchDestId?.() || bot.fetchDestId?.() || session.currentTargetId || 0);
+        const npc = targetId ? NpcObjectIndex.find(World, targetId) : null;
+        return npc && !npc.isDead?.() ? npc : null;
+    }
+    if (!leader) return requested ? null : context.requestContext?.playerSession?.actor || null;
+    if (/^(?:self|yourself|you)$/i.test(requested)) return bot;
+    return memberByName(leader, requested || 'leader')?.actor || null;
+}
+
+function useSkill(context) {
+    const session = context.session;
+    const bot = session.actor;
+    const resolved = nameResolver().resolveSkill(bot, context.decision.skillName, context.decision.skillId);
+    if (!resolved.skill) return skillNotFound(resolved.reason, resolved.alternatives, context.decision.skillName);
+    const skill = resolved.skill;
+    if (bot.isDead?.()) return { applied: false, reason: 'bot_dead' };
+    if (bot.canUseSkill?.(skill) === false) return { applied: false, reason: 'skill_on_cooldown', skillName: skill.fetchName?.() };
+    if (Number(bot.fetchMp?.() || 0) < Number(skill.fetchConsumedMp?.() || 0)) {
+        return { applied: false, reason: 'low_mp_for_skill', skillName: skill.fetchName?.() };
+    }
+    const target = castTarget(context, skill);
+    if (!target) return { applied: false, reason: 'skill_target_missing', skillName: skill.fetchName?.() };
+    const range = Number(skill.fetchDistance?.() || 0);
+    if (target !== bot && range > 0 && distance2d(bot, target) > Math.max(900, range + 600)) {
+        return { applied: false, reason: 'target_too_far', skillName: skill.fetchName?.() };
+    }
+    if (skill.fetchTargetKind?.() === 'enemy') {
+        const Safety = invoke('GameServer/Bot/AI/BotRaidSafety');
+        if (Safety.isProtectedRaidEntity(target) && invoke('GameServer/RaidBoss/RaidCurse').isAboveRaidThreshold(bot, Safety.raidBossFor(target))) {
+            return { applied: false, reason: 'raid_curse', skillName: skill.fetchName?.() };
+        }
+        session.currentTargetId = target.fetchId();
+        bot.select?.({ id: target.fetchId() });
+    }
+    bot.automation?.abortAll?.(bot);
+    invoke(path.actor).skillExec(session, bot, {
+        id: target.fetchId(),
+        selfId: skill.fetchSelfId(),
+        ctrl: true,
+        leaderOrdered: true
+    });
+    const targetName = target === bot ? 'myself' : target.fetchName?.() || 'the target';
+    return {
+        applied: true,
+        reason: 'skill_cast_started',
+        skillId: skill.fetchSelfId(),
+        skillName: skill.fetchName?.(),
+        playerVisibleReply: `Casting ${skill.fetchName?.()} on ${targetName}.`
+    };
+}
+
+function skillNamesFrom(decision) {
+    const names = Array.isArray(decision.skillNames) ? decision.skillNames : [];
+    return [...names, decision.skillName].map((name) => String(name || '').trim()).filter(Boolean).slice(0, 8);
+}
+
+function resolveSkills(context) {
+    const resolver = nameResolver();
+    const found = [];
+    const missing = [];
+    const names = skillNamesFrom(context.decision);
+    if (!names.length && context.decision.skillId) names.push('');
+    names.forEach((name) => {
+        // A family word ("fire", "debuffs") may cover several learned skills.
+        const result = resolver.resolveSkill(context.session.actor, name, name ? 0 : context.decision.skillId);
+        if (result.skill) found.push(result.skill);
+        else if (result.reason === 'skill_ambiguous') {
+            (context.session.actor.skillset?.fetchSkills?.() || [])
+                .filter((skill) => !skill.fetchPassive?.() && resolver.score(name, skill.fetchName?.() || '') >= resolver.MIN_SCORE)
+                .forEach((skill) => found.push(skill));
+        } else missing.push(name);
+    });
+    const unique = [...new Map(found.map((skill) => [Number(skill.fetchSelfId()), skill])).values()];
+    return { skills: unique, missing };
+}
+
+function skillPreference(context, prefer) {
+    const session = context.session;
+    const { skills, missing } = resolveSkills(context);
+    if (!skills.length) return skillNotFound('skill_not_learned', [], missing.join(', '));
+    const overlay = HotBotPolicyOverlay.get(session) || {};
+    const priorities = { ...(overlay.skillPriorities || {}) };
+    const blocked = new Set(overlay.blockedSkills || []);
+    skills.forEach((skill) => {
+        const id = Number(skill.fetchSelfId());
+        if (prefer) {
+            priorities[String(id)] = HotBotPolicyOverlay.MAX_SKILL_WEIGHT;
+            blocked.delete(id);
+        } else {
+            delete priorities[String(id)];
+            blocked.add(id);
+        }
+    });
+    HotBotPolicyOverlay.set(session, { skillPriorities: priorities, blockedSkills: [...blocked] },
+        controllerContext(context, { lifetime: 'party' }));
+    const names = skills.map((skill) => skill.fetchName?.()).join(', ');
+    const unknown = missing.length ? ` I don't know ${missing.join(', ')}.` : '';
+    return {
+        applied: true,
+        reason: prefer ? 'skills_preferred' : 'skills_avoided',
+        skills: skills.map((skill) => ({ id: skill.fetchSelfId(), name: skill.fetchName?.() })),
+        policy: HotBotPolicyOverlay.status(session),
+        playerVisibleReply: prefer
+            ? `I'll lead with ${names} from now on.${unknown}`
+            : `I won't use ${names} until you say otherwise.${unknown}`
+    };
+}
+
+function preferSkill(context) {
+    return skillPreference(context, true);
+}
+
+function avoidSkill(context) {
+    return skillPreference(context, false);
+}
+
+function clearSkillPreferences(context) {
+    const session = context.session;
+    const names = skillNamesFrom(context.decision);
+    if (!names.length) {
+        HotBotPolicyOverlay.set(session, { skillPriorities: null, blockedSkills: null, skillRules: null }, controllerContext(context));
+        return { applied: true, reason: 'skill_preferences_cleared', playerVisibleReply: 'Back to my normal rotation.' };
+    }
+    const { skills } = resolveSkills(context);
+    if (!skills.length) return skillNotFound('skill_not_learned', [], names.join(', '));
+    const overlay = HotBotPolicyOverlay.get(session) || {};
+    const priorities = { ...(overlay.skillPriorities || {}) };
+    const blocked = new Set(overlay.blockedSkills || []);
+    skills.forEach((skill) => {
+        delete priorities[String(skill.fetchSelfId())];
+        blocked.delete(Number(skill.fetchSelfId()));
+    });
+    HotBotPolicyOverlay.set(session, { skillPriorities: priorities, blockedSkills: [...blocked] }, controllerContext(context));
+    return { applied: true, reason: 'skill_preferences_cleared', playerVisibleReply: `${skills.map((skill) => skill.fetchName?.()).join(', ')} back to normal.` };
+}
+
+function setSkillRule(context) {
+    const session = context.session;
+    const rule = String(context.decision.skillRule || '').toLowerCase();
+    const rules = { ...(HotBotPolicyOverlay.get(session)?.skillRules || {}) };
+    let reply;
+    if (rule === 'no_debuffs') {
+        rules.noDebuffs = true;
+        reply = 'No more debuffs from me.';
+    } else if (rule === 'allow_debuffs') {
+        delete rules.noDebuffs;
+        reply = 'Debuffs are back in my rotation.';
+    } else if (rule === 'recharge_below') {
+        if (!BotSkillCapabilities.manaRechargeSkill?.(session.actor)) return { applied: false, reason: 'recharge_not_learned' };
+        const percent = Number(context.decision.ruleValue || 40);
+        if (!Number.isFinite(percent) || percent < 5 || percent > 95) return { applied: false, reason: 'invalid_skill_rule' };
+        rules.rechargeBelow = percent / 100;
+        reply = `I'll Recharge anyone under ${Math.round(percent)}% MP, in combat too.`;
+    } else if (rule === 'no_recharge_rule') {
+        delete rules.rechargeBelow;
+        reply = 'Back to my normal Recharge timing.';
+    } else if (rule === 'clear') {
+        HotBotPolicyOverlay.set(session, { skillRules: null }, controllerContext(context));
+        return { applied: true, reason: 'skill_rules_cleared', playerVisibleReply: 'Skill rules cleared.' };
+    } else {
+        return { applied: false, reason: 'invalid_skill_rule' };
+    }
+    HotBotPolicyOverlay.set(session, { skillRules: rules }, controllerContext(context, { lifetime: 'party' }));
+    return { applied: true, reason: `skill_rule:${rule}`, policy: HotBotPolicyOverlay.status(session), playerVisibleReply: reply };
+}
+
+const OVERRIDE_TEXT = {
+    ignore_level_limits: ['I will fight mobs far below or above my level.', 'Back to my normal level limits.'],
+    engage_raid: ['I will engage raid bosses when you call it.', 'Back to keeping clear of raid bosses unless we pull properly.'],
+    no_retreat: ['No retreating: I stay in the fight.', 'I will retreat again when it gets too dangerous.'],
+    spend_all_mp: ['I will spend all my MP, no reserve.', 'Keeping my usual MP reserve again.']
+};
+
+function overrideRule(context) {
+    const session = context.session;
+    const name = String(context.decision.overrideName || '').toLowerCase();
+    if (!HotBotPolicyOverlay.OVERRIDES.includes(name)) return { applied: false, reason: 'unknown_override' };
+    const enable = context.decision.overrideEnabled !== false;
+    const members = scopedMembers(context);
+    members.forEach((member) => {
+        const current = new Set(HotBotPolicyOverlay.get(member)?.overrides || []);
+        if (enable) current.add(name); else current.delete(name);
+        HotBotPolicyOverlay.set(member, { overrides: [...current] }, controllerContext(context));
+    });
+    return {
+        applied: true,
+        reason: `override:${name}:${enable ? 'on' : 'off'}`,
+        affected: members.length,
+        policy: HotBotPolicyOverlay.status(session),
+        playerVisibleReply: OVERRIDE_TEXT[name][enable ? 0 : 1]
+    };
+}
+
+function buyForSelf(context) {
+    const session = context.session;
+    const leader = partyLeaderFor(session);
+    const resolved = nameResolver().resolveSupplyItem(context.decision.itemName || context.decision.supplyItemName,
+        context.decision.supplyItemId);
+    if (!resolved.selfId) {
+        return { applied: false, reason: resolved.reason, alternatives: resolved.alternatives,
+            requested: String(context.decision.itemName || '').slice(0, 64) };
+    }
+    const amount = Math.floor(Number(context.decision.amount || context.decision.supplyAmount || 1));
+    const result = invoke('GameServer/Bot/AI/BotSupplyErrand').request(session, leader, resolved.selfId, amount, { forSelf: true });
+    if (!result.ok) return { applied: false, ...result, reason: result.reason };
+    return {
+        applied: true,
+        outcome: 'pending',
+        reason: 'self_purchase_started',
+        effect: 'travel_purchase_and_return_pending',
+        itemSelfId: result.itemSelfId,
+        itemName: result.itemName,
+        amount: result.amount,
+        cost: result.cost,
+        town: result.town,
+        playerVisibleReply: `Going to ${result.town} to buy ${result.amount} ${result.itemName} for ${Number(result.cost).toLocaleString('en-US')} Adena. Back soon.`
+    };
+}
+
+function upgradeGear(context) {
+    const session = context.session;
+    const bot = session.actor;
+    const upgrades = BotEquipmentUpgrade.applyBestUpgrades(session);
+    if (upgrades.length) {
+        return {
+            applied: true,
+            reason: 'equipment_optimized',
+            upgrades: upgrades.map(({ item, slot }) => ({ name: item.fetchName(), slot })),
+            playerVisibleReply: `Equipped ${upgrades.map(({ item }) => item.fetchName()).join(', ')} from my bag.`
+        };
+    }
+    const BotAI = invoke('GameServer/Bot/BotAI');
+    const closest = BotAI.getClosestTown?.(bot.fetchLocX(), bot.fetchLocY(), bot.fetchLocZ());
+    if (!closest) return { applied: false, reason: 'no_town_for_gear' };
+    const town = { name: closest.name, x: closest.x, y: closest.y, z: closest.z };
+    let errand = null;
+    try {
+        errand = invoke('GameServer/Bot/AI/CompanionEquipmentShopping').planErrand(session, bot, town);
+    } catch (_) { errand = null; }
+    if (errand?.pending) return { applied: false, reason: 'gear_plan_pending' };
+    if (!errand?.itemId) return { applied: false, reason: 'no_affordable_upgrade' };
+    const result = invoke('GameServer/Bot/AI/BotSupplyErrand').request(session, partyLeaderFor(session), errand.itemId, 1, { forSelf: true });
+    if (!result.ok) {
+        return { applied: false, ...result, reason: result.reason, itemName: errand.itemName,
+            cost: result.cost || errand.price };
+    }
+    return {
+        applied: true,
+        outcome: 'pending',
+        reason: 'gear_upgrade_started',
+        itemName: result.itemName,
+        cost: result.cost,
+        town: result.town,
+        playerVisibleReply: `Next upgrade is ${result.itemName} for ${Number(result.cost).toLocaleString('en-US')} Adena. Going to ${result.town} to buy it.`
+    };
+}
+
+function giveAdena(context) {
+    const player = context?.requestContext?.playerSession;
+    const bot = context.session.actor;
+    const adena = bot.backpack?.fetchItemFromSelfId?.(57);
+    const owned = Number(adena?.fetchAmount?.() || 0);
+    const requested = String(context.decision.adenaAmount || '').toLowerCase() === 'all'
+        ? owned - 1000
+        : Math.floor(Number(context.decision.adenaAmount || context.decision.amount || 0));
+    if (!adena || owned <= 1000) return { applied: false, reason: 'not_enough_adena', adena: owned, cost: requested };
+    if (!(requested > 0)) return { applied: false, reason: 'invalid_adena_amount' };
+    const amount = Math.min(requested, owned - 1000);
+    const result = BotTradeService.startBotTradeWithOffer(context.session, player, adena.fetchId(), amount, { leaderGift: true });
+    if (!result.ok) return { applied: false, reason: result.reason };
+    const short = amount < requested ? ` That's all I can spare; I keep 1,000 for travel.` : '';
+    return {
+        applied: true,
+        outcome: 'pending',
+        reason: 'resources_offered_pending_confirmation',
+        effect: 'native_trade_open_and_offer_displayed',
+        trade: BotTradeService.activeTradeSummary(context.session),
+        line: { objectId: result.line.objectId, selfId: 57, name: 'Adena', count: result.line.count },
+        playerVisibleReply: `Trade window open with ${Number(result.line.count).toLocaleString('en-US')} Adena.${short}`
+    };
+}
+
+function destinationFor(bot, leader, name) {
+    const requested = String(name || '').trim();
+    if (!requested) return null;
+    const World = invoke('GameServer/World/World');
+    const players = (World.user?.sessions || []).filter((candidate) => candidate?.actor && candidate.actor.fetchIsOnline?.() !== false);
+    const player = nameResolver().best(requested, players, (candidate) => String(candidate.actor.fetchName?.() || '')).match;
+    if (player && nameResolver().score(requested, player.actor.fetchName()) >= 0.95) {
+        return { name: player.actor.fetchName(), loc: { locX: player.actor.fetchLocX(), locY: player.actor.fetchLocY(), locZ: player.actor.fetchLocZ() } };
+    }
+    const npcs = (World.npc?.spawns || []).filter((npc) => npc && !npc.isDead?.()
+        && nameResolver().score(requested, npc.fetchName?.() || '') >= nameResolver().MIN_SCORE);
+    const npc = npcs.sort((a, b) => distance2d(bot, a) - distance2d(bot, b))[0];
+    if (npc) return { name: npc.fetchName(), loc: { locX: npc.fetchLocX(), locY: npc.fetchLocY(), locZ: npc.fetchLocZ() } };
+    if (player) return { name: player.actor.fetchName(), loc: { locX: player.actor.fetchLocX(), locY: player.actor.fetchLocY(), locZ: player.actor.fetchLocZ() } };
+    return null;
+}
+
+const GO_TO_MAX_DISTANCE = 12000;
+
+function goTo(context) {
+    const session = context.session;
+    const bot = session.actor;
+    const leader = partyLeaderFor(session);
+    const destination = destinationFor(bot, leader, context.decision.destinationName || context.decision.targetPlayerName);
+    if (!destination) return { applied: false, reason: 'destination_not_found', requested: String(context.decision.destinationName || '').slice(0, 64) };
+    const dx = destination.loc.locX - bot.fetchLocX();
+    const dy = destination.loc.locY - bot.fetchLocY();
+    if (Math.hypot(dx, dy) > GO_TO_MAX_DISTANCE) return { applied: false, reason: 'destination_too_far', destination: destination.name };
+    clearChatArrival(session, 'leader_go_to');
+    // A companion holds at the destination, as with a Hold order; "follow"
+    // or "back to me" brings it back.
+    const offset = { locX: destination.loc.locX + utils.oneFromSpan(-60, 60), locY: destination.loc.locY + utils.oneFromSpan(-60, 60), locZ: destination.loc.locZ };
+    session.botStay = true;
+    session.stayLocation = offset;
+    session.plan = 'following';
+    session.currentTargetId = undefined;
+    session.goToOrder = { name: destination.name, at: Date.now(), reportTo: leader };
+    bot.unselect?.();
+    bot.moveTo({ from: { locX: bot.fetchLocX(), locY: bot.fetchLocY(), locZ: bot.fetchLocZ() }, to: offset });
+    return {
+        applied: true,
+        outcome: 'pending',
+        reason: 'go_to_started',
+        destination: destination.name,
+        playerVisibleReply: `Walking to ${destination.name}. I'll tell you when I'm there and wait for you.`
+    };
+}
+
+// W7: up to four steps the bot runs in order (BotTaskQueue).
+function planSteps(context) {
+    const steps = Array.isArray(context.decision.steps) ? context.decision.steps : [];
+    const result = invoke('GameServer/Bot/AI/BotTaskQueue').start(context.session, steps, context.requestContext);
+    if (!result.ok) return { applied: false, reason: result.reason };
+    return {
+        applied: true,
+        outcome: 'pending',
+        reason: 'task_plan_started',
+        steps: result.steps,
+        playerVisibleReply: `Plan: ${result.steps.map((step, index) => `${index + 1}) ${step.label}`).join(', ')}. Starting now.`
+    };
+}
+
 function partyCandidates(playerSession, currentSession = null) {
     if (!playerSession?.actor) return [];
     const World = invoke('GameServer/World/World');
@@ -897,7 +1391,22 @@ function registerTools() {
         counter_offer: 'Set a bounded counter price within the active negotiation range.',
         accept_price: 'Accept a server-bounded price. A merchant republishes the agreed quantity in its public store; a companion keeps the accepted native-trade price.',
         decline_price: 'Decline the active negotiation and release its stock reservation.',
-        open_negotiated_trade: 'For companions only, open native trade after the bounded price has been accepted.'
+        open_negotiated_trade: 'For companions only, open native trade after the bounded price has been accepted.',
+        attack_target: 'Make every companion attack the leader\'s current target now (or the visible mob named in targetName) and keep at it until it dies. Works on raid bosses and on mobs far below or above our level. scope=self for only this bot.',
+        set_combat_mode: 'Set the party combat mode for every companion: assist (attack what the leader attacks), protect (fight whatever attacks the party) or passive (only fight back).',
+        retreat_party: 'Every companion stops fighting and falls back to the leader.',
+        focus_heal: 'Healers keep healTargetName (a party member, or the leader) topped up before anyone else for a few minutes.',
+        use_skill: 'Cast one learned skill now, by skillName. skillTarget: "target" (the leader\'s target), a party member name, "me" (the leader) or "self".',
+        prefer_skill: 'Lead with the named skills (skillNames) from now on, until the party ends or the leader clears it.',
+        avoid_skill: 'Stop using the named skills (skillNames) from now on, until the party ends or the leader clears it.',
+        clear_skill_preferences: 'Clear prefer/avoid orders for skillNames, or for every skill when skillNames is empty.',
+        set_skill_rule: 'Set a rotation rule: skillRule no_debuffs | allow_debuffs | recharge_below (ruleValue = MP percent; healers Recharge anyone below it, in combat too) | no_recharge_rule | clear.',
+        override_rule: 'Override a built-in caution rule for the party (scope=self for this bot): overrideName ignore_level_limits | engage_raid | no_retreat | spend_all_mp, overrideEnabled true/false. The raid curse, death and missing skills stay hard limits.',
+        buy_for_self: 'Go to the shop that sells itemName (shots, potions, scrolls, gear), buy amount with this bot\'s own Adena, keep it and come back.',
+        upgrade_gear: 'Equip any better gear in the bag; otherwise pick the next affordable upgrade from the gear plan, go buy it and come back.',
+        give_adena: 'Open a trade giving the leader adenaAmount Adena ("all" for everything but a 1,000 travel reserve). No cap.',
+        go_to: 'Walk to the NPC or player named destinationName (within about 12,000 units) and wait there until called back.',
+        plan_steps: 'For an order with several steps, give up to four steps in order; each step is {action, ...that action\'s fields}. Steps run one after another without further prompts.'
     };
 
     const controlActions = new Set([
@@ -906,7 +1415,8 @@ function registerTools() {
         'set_pull_policy', 'stop_pulling_and_return', 'assign_puller', 'unassign_puller',
         'set_skill_priority', 'clear_skill_priority', 'set_combat_stance',
         'list_safe_loadouts', 'equip_candidate', 'optimize_equipment',
-        'propose_trade', 'give_resources', 'fetch_resources', 'offer_resources', 'update_trade_offer', 'cancel_trade'
+        'propose_trade', 'give_resources', 'fetch_resources', 'offer_resources', 'update_trade_offer', 'cancel_trade',
+'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps'
     ]);
     const economyActions = new Set([
         'quote_item', 'counter_offer', 'accept_price', 'decline_price', 'open_negotiated_trade'
@@ -938,7 +1448,22 @@ function registerTools() {
         counter_offer: counterOffer,
         accept_price: acceptPrice,
         decline_price: declinePrice,
-        open_negotiated_trade: openNegotiatedTrade
+        open_negotiated_trade: openNegotiatedTrade,
+        attack_target: attackTarget,
+        set_combat_mode: setCombatMode,
+        retreat_party: retreatParty,
+        focus_heal: focusHeal,
+        use_skill: useSkill,
+        prefer_skill: preferSkill,
+        avoid_skill: avoidSkill,
+        clear_skill_preferences: clearSkillPreferences,
+        set_skill_rule: setSkillRule,
+        override_rule: overrideRule,
+        buy_for_self: buyForSelf,
+        upgrade_gear: upgradeGear,
+        give_adena: giveAdena,
+        go_to: goTo,
+        plan_steps: planSteps
     };
 
     ACTIONS.forEach((name) => {
@@ -1040,8 +1565,45 @@ function worldRevision(session) {
     return BotToolRegistry.worldRevision(session);
 }
 
+function alternativesText(result) {
+    const names = (result.alternatives || []).filter(Boolean);
+    return names.length ? ` Did you mean ${names.join(' or ')}?` : '';
+}
+
 function rejectionReply(result = {}) {
+    // A tool that already knows the exact truth (e.g. the raid curse line)
+    // says it itself.
+    if (result.playerVisibleReply) return result.playerVisibleReply;
+    const requested = result.requested ? ` "${result.requested}"` : '';
     switch (result.reason) {
+        case 'skill_ambiguous': return `I know more than one skill like that.${alternativesText(result)}`;
+        case 'missing_skill_name': return 'Which skill?';
+        case 'skill_on_cooldown': return `${result.skillName || 'That skill'} is still on cooldown.`;
+        case 'low_mp_for_skill': return `Not enough MP for ${result.skillName || 'that skill'} right now.`;
+        case 'skill_target_missing': return `I have no valid target for ${result.skillName || 'that skill'}. Target something first.`;
+        case 'raid_curse': return 'I am more than 8 levels above that raid boss. The raid curse would silence or petrify me, so I can\'t fight it.';
+        case 'attack_target_not_found': return `I can't see${requested} anywhere near me.`;
+        case 'no_attack_target': return 'Target something first and I will go.';
+        case 'invalid_combat_mode': return 'Combat mode is assist, protect or passive.';
+        case 'heal_target_not_in_party': return 'That player is not in our party.';
+        case 'no_party_healer': return 'Nobody in the party can heal.';
+        case 'recharge_not_learned': return 'I have not learned Recharge.';
+        case 'invalid_skill_rule': return 'I can do: no debuffs, allow debuffs, recharge below a percent, or clear.';
+        case 'unknown_override': return 'I can override: level limits, raid bosses, retreating, or my MP reserve.';
+        case 'supply_item_ambiguous': return `Which one?${alternativesText(result)}`;
+        case 'item_not_owned': return `I don't have${requested || ' that'} in my bag.`;
+        case 'item_ambiguous': return `I have more than one of those.${alternativesText(result)}`;
+        case 'missing_item_name': return 'Which item?';
+        case 'no_town_for_gear': return 'I cannot find a town to shop in from here.';
+        case 'gear_plan_pending': return 'I am still working out my next upgrade. Ask me again in a moment.';
+        case 'no_affordable_upgrade': return 'I cannot afford a better piece of gear right now.';
+        case 'invalid_adena_amount': return 'How much Adena?';
+        case 'destination_not_found': return `I don't know where${requested || ' that'} is.`;
+        case 'destination_too_far': return `${result.destination || 'That'} is too far to walk; teleport closer first.`;
+        case 'invalid_task_plan': return 'I could not turn that into steps I can do.';
+        case 'task_plan_active': return 'I am still carrying out your last plan.';
+        case 'bot_dead': return 'I am dead.';
+        case 'no_travel_fare': return 'I cannot pay for the trip to town.';
         case 'stale_world_state': return 'The situation changed, so I did not make that move.';
         case 'one_mutation_per_turn': return 'I can only change one thing at a time.';
         case 'low_confidence': return 'I am not certain enough to change that safely.';
@@ -1065,7 +1627,7 @@ function rejectionReply(result = {}) {
         case 'recently_abandoned': return 'Someone in the party remembers being abandoned. Not this time.';
         case 'activation_failed': return 'We agreed, but the whole party could not reach you safely.';
         case 'persistence_failed': return 'We could not transfer party ownership safely. Ask again in a moment.';
-        case 'unsupported_supply_item': return 'I cannot identify that item in the server shop catalog.';
+        case 'unsupported_supply_item': return `No shop I know sells${requested || ' that item'}.${alternativesText(result)}`;
         case 'invalid_supply_amount': return 'Tell me a supply amount between 1 and 5,000.';
         case 'non_stackable_supply_amount': return 'That item is not stackable; request one at a time.';
         case 'supply_errand_active': return 'I already have a shopping or delivery errand in progress.';
@@ -1095,7 +1657,7 @@ function rejectionReply(result = {}) {
         case 'no_safe_upgrade': return 'I could not find a safe equipment upgrade for this situation.';
         case 'reserved_exchange_material': return 'I am keeping that item as material for an equipment exchange.';
         case 'unsafe_combat_state': return 'I am in combat. I will finish this fight before starting that request.';
-        case 'skill_not_learned':
+        case 'skill_not_learned': return `I haven't learned${requested || ' that skill'}.${alternativesText(result)}`;
         case 'skill_not_combat_eligible':
         case 'skill_incompatible': return 'That skill cannot be used as a combat preference.';
         case 'invalid_skill_priority':

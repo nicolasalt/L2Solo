@@ -108,14 +108,14 @@ function emptyResult(playerSession, botSubject, options = {}) {
 // hostile shared relation) or one that ended its party in the last minutes.
 function socialRefusal(memory, at) {
     if (Number(memory?.trust || 0) <= -6) return 'relationship_hostile';
-    if (require('../Population/PopulationConfig').partyHistoryEnabled
+    if (invoke('GameServer/Bot/Population/PopulationConfig').partyHistoryEnabled
         && BotSocialMemory.recentlyAbandoned(memory, at)) return 'recently_abandoned';
     return null;
 }
 
 // alwaysJoinPlayerParty turns every player invite into the friend path.
 function withConfiguredForce(options) {
-    return !options.forceFriend && require('../Population/PopulationConfig').alwaysJoinPlayerParty
+    return !options.forceFriend && invoke('GameServer/Bot/Population/PopulationConfig').alwaysJoinPlayerParty
         ? { ...options, forceFriend: true } : options;
 }
 

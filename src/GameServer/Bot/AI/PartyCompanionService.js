@@ -705,6 +705,7 @@ function beginRegroup(leaderSession, options = {}) {
         cancelCompanionAction(member);
         member.botStay = false;
         member.stayLocation = null;
+        delete member.goToOrder;
         member.plan = 'following';
         member.currentTargetId = undefined;
         member.lastFollowMoveTarget = null;

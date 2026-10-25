@@ -81,6 +81,7 @@ function tick(session, bot, Generics, AI, now = Date.now()) {
     }
     if (raid.phase === 'retreat') return retreat(session, bot, owner, raid, boss, allMembers, now);
     if (!levelAllowed(bot, boss)) {
+        invoke('GameServer/Bot/AI/BotPartyOrders').warnRaidCurse(owner, boss, now);
         Tactics.stop(session, bot);
         return hold(session, bot, 'raid_level_ineligible', boss, now);
     }

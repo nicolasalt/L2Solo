@@ -139,6 +139,14 @@ const catalog = {
         "Done in town. Coming back to you.",
         "That's the errands out of the way. Heading back."
     ],
+    "town.self-purchased": [
+        "Bought {count} {item} for myself. Heading back.",
+        "{count} {item} bought. On my way back to you."
+    ],
+    "town.self-return.ready": [
+        "Back, and restocked.",
+        "I'm back with what I needed."
+    ],
     "town.supply-return.ready": [
         "Back with your supplies. I'll trade them over when it's safe.",
         "Got the goods here. Let's wait for a quiet moment to trade."

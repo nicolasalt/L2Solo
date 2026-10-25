@@ -21,6 +21,10 @@ const TownPathfinder = invoke('GameServer/Bot/AI/TownPathfinder');
 const BotRetreatPlanner = invoke('GameServer/Bot/AI/BotRetreatPlanner');
 const PartyClassTactics = invoke('GameServer/Bot/AI/PartyClassTactics');
 const BotRaidSafety = invoke('GameServer/Bot/AI/BotRaidSafety');
+// Loaded on use: leader orders are rare, and the companion tick has
+// isolated tests that load this file with a fixed dependency set.
+const BotPartyOrders = { orderedTargetId: (session) => invoke('GameServer/Bot/AI/BotPartyOrders').orderedTargetId(session) };
+const BotManagerRef = () => invoke('GameServer/Bot/BotManager');
 const HotActorLodPolicy = invoke('GameServer/Bot/AI/HotActorLodPolicy');
 const TownServiceCatalog = invoke('GameServer/Bot/Economy/TownServiceCatalog');
 const ItemDisposition = invoke('GameServer/Bot/Economy/ItemDisposition');
@@ -858,6 +862,7 @@ const FollowingState = {
         // One companion tick: the phases below run in this order and share
         // the per-call ctx. A phase that returns true has ended the tick.
         const ctx = { session, bot, Generics, BotAI };
+        if (session.taskQueue) invoke('GameServer/Bot/AI/BotTaskQueue').tick(session);
         if (FollowingState.tickLeaderPresence(ctx)) return;
         if (FollowingState.tickLeaderRevival(ctx)) return;
         if (FollowingState.tickPartyContext(ctx)) return;
@@ -1035,9 +1040,16 @@ const FollowingState = {
             if (partyAggroCache === null) partyAggroCache = partyAggroMonsters(playerSession);
             return partyAggroCache;
         };
-        const leaderTargetId = partyRaid?.phase === 'combat'
+        let leaderTargetId = partyRaid?.phase === 'combat'
             ? Number(partyRaid.targetId || partyRaid.bossId)
             : (pulling.enabled ? undefined : configuredLeaderTargetId);
+        // A leader's attack order wins over pulling, the combat mode and
+        // threats on other members; it ends when its target dies.
+        const orderedTargetId = !partyRaid && session.leaderAttackOrder ? BotPartyOrders.orderedTargetId(session) : null;
+        if (orderedTargetId) {
+            leaderTargetId = orderedTargetId;
+            if (!personalSupportThreat) partyThreat = null;
+        }
         Object.assign(ctx, { role, distance, leaderSeated, restFormationDistance, partySettings, partyRaid, pulling, personalSupportThreat, rawThreatOnlyTargetsTravellingPuller, partyThreat, currentPartyAggroMonsters, leaderTargetId });
         return false;
     },
@@ -1135,7 +1147,9 @@ const FollowingState = {
             recordRoleDecision(session, bot, 'hold_position', 'karma_keeps_out_of_town');
             return true;
         }
-        if (!waitsOutsideTown && (session.companionTownTransit || distance > FOLLOW_TELEPORT_DISTANCE)) {
+        // A companion walking to a place the leader named is not lost.
+        const leaderSentAway = !!session.goToOrder;
+        if (!waitsOutsideTown && !leaderSentAway && (session.companionTownTransit || distance > FOLLOW_TELEPORT_DISTANCE)) {
             const transit = CompanionTownTransit.tick(session, bot, player);
             if (transit.handled) {
                 session.stuckTicks = 0;
@@ -1148,7 +1162,7 @@ const FollowingState = {
         }
         const separatedInsideTown = distance > FOLLOW_TELEPORT_DISTANCE
             && CompanionTownTransit.sameTown(bot, player);
-        if (!waitsOutsideTown && !pullerTravelling
+        if (!waitsOutsideTown && !pullerTravelling && !leaderSentAway
             && (session.stuckTicks >= 3 || (distance > FOLLOW_TELEPORT_DISTANCE && !separatedInsideTown))) {
             session.stuckTicks = 0;
             recordRoleDecision(session, bot, 'follow_leader', distance > FOLLOW_TELEPORT_DISTANCE ? 'catch_up' : 'unstuck');
@@ -1410,9 +1424,18 @@ const FollowingState = {
         const routineHealCandidate = role === 'healer' ? BotSkillCapabilities.selectHealSkill(bot) : null;
         const emergencyHealCandidate = role === 'healer' ? BotSkillCapabilities.selectHealSkill(bot, { emergency: true }) : null;
         const rechargeSkill = role === 'healer' ? BotSkillCapabilities.manaRechargeSkill(bot) : null;
-        const woundedPartyMember = role === 'healer'
+        // A leader's focus-heal order ("heal me", "help!") tops that member
+        // off before anyone else short of an emergency.
+        const focusHealMember = role === 'healer' && session.focusHealUntil && Number(session.focusHealUntil) > Date.now()
+            ? partyMembersInSupportRange(playerSession, bot)
+                .find((entry) => Number(entry.actor.fetchId()) === Number(session.focusHealTargetId) && entry.hpRatio < 0.9)
+            : null;
+        const weakestMember = role === 'healer'
             ? weakestPartyMember(playerSession, bot, pulling.puller?.actor)
             : null;
+        const woundedPartyMember = focusHealMember && !(weakestMember?.hpRatio < 0.45)
+            ? { ...focusHealMember, hpRatio: Math.min(focusHealMember.hpRatio, 0.69) }
+            : weakestMember;
         const woundedPartyCount = role === 'healer'
             ? partyMembersInSupportRange(playerSession, bot).filter((entry) => entry.hpRatio < 0.70).length
             : 0;
@@ -1435,7 +1458,17 @@ const FollowingState = {
             Number(partyThreat.targetId || 0) !== Number(bot.fetchId())
             ? lowestManaPartyMember(playerSession, bot, pulling.puller?.actor, 900, { emergencyTankOnly: true })
             : null;
-        const manaPartyMember = emergencyTankManaMember || safeManaPartyMember;
+        // The leader's "Recharge mages below N% MP" rule applies in combat too.
+        const rechargeBelow = role === 'healer' && rechargeSkill && session.hotPolicyOverlay
+            ? invoke('GameServer/Bot/AI/HotBotPolicyOverlay').skillRules(session).rechargeBelow
+            : null;
+        const ruleManaPartyMember = rechargeBelow
+            ? partyMembersInSupportRange(playerSession, bot, 900)
+                .filter((entry) => entry.actor !== bot && entry.mpRatio < rechargeBelow)
+                .filter((entry) => BotRoles.needsPartyManaRecovery(entry.actor))
+                .sort((a, b) => a.mpRatio - b.mpRatio)[0] || null
+            : null;
+        const manaPartyMember = emergencyTankManaMember || ruleManaPartyMember || safeManaPartyMember;
         // Healing is the healer's first obligation.  Do not queue a regular
         // party buff and then overwrite it with a heal in this same AI tick.
         const healerNeedsAction = role === 'healer' && (
@@ -1916,7 +1949,8 @@ const FollowingState = {
                     }
                 }).catch(() => {
                     World.fetchNpc(playerTargetId).then((npc) => {
-                        if (PartyAwareness.leaderCombatTargetId(playerSession, { allowPlayerRaid: true }) !== playerTargetId) return;
+                        if (PartyAwareness.leaderCombatTargetId(playerSession, { allowPlayerRaid: true }) !== playerTargetId
+                            && !(session.leaderAttackOrder && BotPartyOrders.orderedTargetId(session) === playerTargetId)) return;
                         if (session.currentTargetId && session.currentTargetId !== playerTargetId) return;
                         if ((!BotRaidSafety.isProtectedRaidEntity(npc) || BotRaidSafety.canEngagePlayerPartyRaid(session, npc, playerSession)) && npc.fetchAttackable() && !npc.isDead()) {
                             if (session.botStay && session.stayLocation) {
@@ -1975,6 +2009,12 @@ const FollowingState = {
                 ));
                 if (!keepRoleDecision) {
                     recordRoleDecision(session, bot, 'hold_position', 'stay_order');
+                }
+                if (session.goToOrder && stayDist <= 150) {
+                    // Report arrival only once the bot is actually there.
+                    const order = session.goToOrder;
+                    delete session.goToOrder;
+                    if (order.reportTo?.actor) BotManagerRef().botTell(session, order.reportTo, `I'm at ${order.name}. Waiting here.`);
                 }
                 if (stayDist > 100) {
                     bot.moveTo({

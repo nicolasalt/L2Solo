@@ -229,6 +229,7 @@ function findPreferredMonster(session, bot, radius, options = {}) {
         maxHp: bot.fetchMaxHp?.()
     };
 
+    const ignoreLevelLimits = invoke('GameServer/Bot/AI/HotBotPolicyOverlay').hasOverride(session, 'ignore_level_limits');
     const candidates = nearbyNpcs
         .map((npc) => {
             const claimed = claimedIds.has(Number(npc.fetchId()));
@@ -245,6 +246,7 @@ function findPreferredMonster(session, bot, radius, options = {}) {
                 raidEntity: BotRaidSafety.isProtectedRaidEntity(npc),
                 dead: npc.isDead(),
                 retryCooldown: targetOnCooldown(session, npc.fetchId()),
+                ignoreLevelLimits,
                 botLevel: bot.fetchLevel(),
                 minLevelGap: invoke('GameServer/Bot/Economy/EquipmentIncomeRoute').economicHunt(session.coldLifeState || {}) ? -15 : undefined,
                 npcLevel: npc.fetchLevel?.() || bot.fetchLevel(),

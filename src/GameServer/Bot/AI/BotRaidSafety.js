@@ -9,6 +9,8 @@ const DEFAULT_RETREAT_DISTANCE = 1100;
 const RAID_DISENGAGE_GRACE_MS = 15000;
 const RAID_OPENER_MIN_HP_RATIO = 0.55;
 const RAID_PULL_RADIUS = 900;
+// An ordered raid starts from farther away: the leader asked for it.
+const RAID_ORDER_RADIUS = 2500;
 
 function world() {
     return invoke('GameServer/World/World');
@@ -216,10 +218,22 @@ function startPlayerPartyRaid(leaderSession, boss, target, now) {
     return raid;
 }
 
+// The leader ordered this raid (an attack order on it or the engage_raid
+// override): pull mode, line of sight and the pull radius no longer veto it.
+function leaderOrderedRaid(leaderSession, boss) {
+    const Orders = invoke('GameServer/Bot/AI/BotPartyOrders');
+    return playerPartySessions(leaderSession)
+        .some((session) => session !== leaderSession && Orders.allowsRaidTarget(session, boss));
+}
+
 function canStartPlayerRaidPull(leaderSession, boss) {
-    if (leaderSession.partyCompanionSettings?.pullMode === 'off') return false;
     if (leaderSession.partyRaidPullBlockedBossId === objectId(boss)) return false;
     if (leaderSession.partyPullState?.targetId && leaderSession.partyPullState?.type !== 'raid') return false;
+    if (leaderOrderedRaid(leaderSession, boss)) {
+        const leader = leaderSession.actor;
+        return Math.hypot(leader.fetchLocX() - boss.fetchLocX(), leader.fetchLocY() - boss.fetchLocY()) <= RAID_ORDER_RADIUS;
+    }
+    if (leaderSession.partyCompanionSettings?.pullMode === 'off') return false;
     const origin = leaderSession.actor;
     if (Math.hypot(origin.fetchLocX() - boss.fetchLocX(), origin.fetchLocY() - boss.fetchLocY()) > RAID_PULL_RADIUS
         || Math.abs(origin.fetchLocZ() - boss.fetchLocZ()) > 400) return false;
@@ -346,6 +360,7 @@ function syncPlayerPartyRaid(leaderSession, now = Date.now()) {
 
 function canEngagePlayerPartyRaid(session, target, leaderSession = session?.followPlayerSession) {
     if (!isOnlineCompanion(session, leaderSession)) return false;
+    if (invoke('GameServer/Bot/AI/BotPartyOrders').allowsRaidTarget(session, target)) return true;
     const raid = syncPlayerPartyRaid(leaderSession);
     if (!raid || !belongsToRaid(target, raid)) return false;
     if (raid.phase === 'combat') return true;
@@ -413,6 +428,10 @@ function clearTarget(session, bot, target) {
 
 function retreat(session, bot, threat, options = {}) {
     if (!session || !bot || !isProtectedRaidEntity(threat)) return false;
+    // The leader's no-retreat override keeps a bot in the fight, except
+    // where the raid curse would lock it out anyway.
+    if (invoke('GameServer/Bot/AI/HotBotPolicyOverlay').hasOverride(session, 'no_retreat')
+        && !invoke('GameServer/RaidBoss/RaidCurse').isAboveRaidThreshold(bot, raidBossFor(threat))) return false;
     // The generic hunting/resting safety net also sees recent raid hits.  An
     // autonomous clan member must not reinterpret its own authorized boss or
     // minion as an accidental raid pull and run away a tick after the main
@@ -485,6 +504,7 @@ module.exports = {
     endPlayerPartyRaid,
     canEngagePlayerPartyRaid,
     isEngagedPlayerPartyRaidTarget,
+    raidBossFor,
     hasControlledRaidMinion,
     botClanRaidCombatPlan,
     clearTarget,

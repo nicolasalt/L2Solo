@@ -214,7 +214,10 @@ function createTrade(playerSession, botSession, direction, metadata = {}) {
         createdAt: now(),
         expiresAt: now() + TRADE_TTL_MS,
         workflowId: metadata.workflowId || null,
-        supplyDelivery: metadata.supplyDelivery === true
+        supplyDelivery: metadata.supplyDelivery === true,
+        // A companion giving its own leader what was asked for: no gift
+        // budget and no per-line amount cap (party bots belong to the leader).
+        leaderGift: metadata.leaderGift === true
     };
 }
 
@@ -349,7 +352,8 @@ function offerBotItem(botSession, objectId, amount) {
     const current = trade.botItems.get(canonicalObjectId);
     if (!current && trade.botItems.size >= MAX_TRADE_LINES) return { ok: false, reason: 'trade_line_limit' };
 
-    const requested = Math.max(1, Math.min(MAX_ITEM_AMOUNT, Math.floor(Number(amount) || 1)));
+    const lineCap = trade.leaderGift === true ? Number(item.fetchAmount()) : MAX_ITEM_AMOUNT;
+    const requested = Math.max(1, Math.min(lineCap, Math.floor(Number(amount) || 1)));
     const reservations = botReservations(botSession);
     const previousReservation = reservations.get(canonicalObjectId);
     if (previousReservation && previousReservation.tradeId !== trade.id) {
@@ -365,7 +369,7 @@ function offerBotItem(botSession, objectId, amount) {
     }
 
     const delta = Math.max(0, nextCount - (current?.count || 0));
-    if (!trade.supplyDelivery) {
+    if (!trade.supplyDelivery && trade.leaderGift !== true) {
         const ledger = botGiftLedger(botSession);
         if (ledger.units + delta > MAX_BOT_GIFT_UNITS) return { ok: false, reason: 'gift_budget_exceeded' };
         ledger.units += delta;

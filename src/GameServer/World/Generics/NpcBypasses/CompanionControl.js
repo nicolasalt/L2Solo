@@ -55,6 +55,7 @@ function stayHere(targetSession) {
 function followLeader(targetSession) {
     targetSession.botStay = false;
     targetSession.stayLocation = null;
+    delete targetSession.goToOrder;
 }
 
 function isAssignedPuller(targetSession, settings = PartyCompanionService.getSettings(targetSession?.followPlayerSession)) {

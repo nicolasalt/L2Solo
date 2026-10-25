@@ -18,7 +18,7 @@ function evaluate(subject, memory = {}, options = {}) {
         return { accept: true, reason: 'available', reasonText: 'available', score: null, persona: null };
     }
 
-    const history = require('../Population/PopulationConfig').partyHistoryEnabled;
+    const history = invoke('GameServer/Bot/Population/PopulationConfig').partyHistoryEnabled;
     const trust = history ? Number(memory.trust || 0) : 0;
     const familiarity = history ? Number(memory.familiarity || 0) : 0;
     const relationship = BotSocialMemory.relationship(memory);

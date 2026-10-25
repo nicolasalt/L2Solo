@@ -745,6 +745,14 @@ module.exports = {
                     throw new Error(purchased.reason || 'purchase_delta_mismatch');
                 }
                 const purchasedItem = purchased.item || bot.backpack.fetchItemFromSelfId(companionErrand.itemId);
+                if (companionErrand.forSelf) {
+                    // Bought for its own use: equip it if it is an upgrade and keep it.
+                    try { invoke('GameServer/Bot/AI/BotEquipmentUpgrade').applyBestUpgrades(session); } catch (_) { /* not equipment */ }
+                    session.lastTradeSummary = `bought ${purchased.delta}x ${companionErrand.itemName} for ${formatAdena(purchased.cost)}a for itself`;
+                    TownChatter.say(session, BotAI, 'supply-purchased', Speech.lines('town.self-purchased', { count: purchased.delta, item: companionErrand.itemName }), { priority: 'coordination' });
+                    this.scheduleResourceReturn(session, bot, BotAI, { deliveryReady: true, forSelf: true });
+                    return;
+                }
                 session.pendingResourceDelivery = {
                     playerSession: companionErrand.playerSession,
                     playerId: companionErrand.playerId,
@@ -1157,7 +1165,7 @@ module.exports = {
                 Promise.resolve().then(() => PopulationService.markHot(session, 'supply_errand_return')).catch(() => null).then(() => {
                     restoreHot();
                     TownChatter.say(session, BotAI, 'supply-return', options.deliveryReady === true
-            ? Speech.lines('town.supply-return.ready')
+            ? Speech.lines(options.forSelf === true ? 'town.self-return.ready' : 'town.supply-return.ready')
             : Speech.lines('town.supply-return.empty'), { priority: 'coordination' });
                     if (invoke('GameServer/Bot/Population/PopulationConfig').developerDiagnostics === true) WorkflowTelemetry.recordSupply(workflowId, 'return', {
                         botId: bot.fetchId(),

@@ -37,7 +37,7 @@ function safeNumber(read, fallback = 0) {
 
 function textRequestsInventory(text = '') {
     const lower = String(text || '').toLowerCase();
-    return /\b(item|items|inventory|gear|weapon|armor|adena|shot|shots|soulshot|soulshots|spiritshot|spiritshots|trade|loot|give|bring|spare|need|have|sell|buy|equip|equipped|upgrade)\b/.test(lower) ||
+    return /\b(items?|inventory|gear|weapons?|armou?rs?|adena|shots?|soulshots?|spiritshots?|potions?|scrolls?|bag|trade|loot|give|bring|spare|need|have|sell|buy|equip|equipped|upgrades?|shields?|bows?|swords?|daggers?|staffs?|robes?|jewel(?:ry|s)?|rings?|earrings?|necklaces?)\b/.test(lower) ||
         /(инвент|вещ|шмот|оруж|брон|аден|сос|шоты|шот|трейд|лут|дай|принес|принести|запас|нужн|есть|прод|экип|надет|улучш)/.test(lower);
 }
 
@@ -208,9 +208,17 @@ function inventorySnapshot(actor, text = '') {
         .slice(0, wantsItems ? 24 : 12)
         .map((item) => itemSummary(item, wantsItems));
 
+    // Every item, compactly, so "what do you have" never depends on a keyword.
+    const bag = items
+        .filter((item) => !(item.fetchEquipped && item.fetchEquipped()) && item.fetchSelfId() !== 57)
+        .slice(0, 60)
+        .map((item) => [item.fetchId(), item.fetchName(), item.fetchAmount()]);
+
     return {
         adena: safeNumber(() => backpack.fetchTotalAdena()),
         totalItems: items.length,
+        bag,
+        bagFormat: '[objectId, name, amount]',
         totalLoad: safeNumber(() => backpack.fetchTotalLoad()),
         shots: {
             kind: shotPlan.kind,
@@ -248,17 +256,40 @@ function skillSummary(skill) {
     };
 }
 
+function skillKind(skill) {
+    const semantic = skill.fetchSemantic?.() || {};
+    const target = String(skill.fetchTargetKind?.() || '');
+    if (semantic.effectType === 'debuff') return 'debuff';
+    if (target === 'enemy') return 'attack';
+    if (semantic.effectType === 'buff') return 'buff';
+    return target || 'other';
+}
+
+// Every learned active skill, compactly: the bot always knows its own kit.
+function compactSkill(skill) {
+    return [
+        skill.fetchSelfId(),
+        skill.model?.name || skill.fetchName?.() || '',
+        skill.fetchLevel(),
+        skill.fetchConsumedMp() || 0,
+        Math.round((skill.fetchReuseTime() || 0) / 1000),
+        skillKind(skill)
+    ];
+}
+
 function skillsSnapshot(actor, text = '') {
     const skills = actor?.skillset?.fetchSkills ? actor.skillset.fetchSkills() : [];
     const lower = String(text || '').toLowerCase();
-    const wantsSkills = /\b(skill|skills|heal|buff|haste|shield|might|wind walk|windwalk|spoil|sweep)\b/.test(lower) ||
+    const wantsSkills = /\b(skills?|heal|buff|haste|shield|might|wind walk|windwalk|spoil|sweep)\b/.test(lower) ||
         /(скилл|хил|баф|хаст|щит|майт|винд|спойл|свип)/.test(lower);
-    const active = skills
-        .filter((skill) => !skill.fetchPassive())
-        .slice(0, wantsSkills ? 24 : 12)
+    const learned = skills.filter((skill) => !skill.fetchPassive());
+    const active = learned
+        .slice(0, wantsSkills ? 24 : 0)
         .map(skillSummary);
 
     return {
+        kit: learned.map(compactSkill),
+        kitFormat: '[skillId, name, level, mpCost, reuseSeconds, kind]',
         active,
         passiveCount: skills.filter((skill) => skill.fetchPassive()).length,
         support: {
@@ -273,7 +304,7 @@ function skillsSnapshot(actor, text = '') {
                 skillId: buff.skill.fetchSelfId()
             }))
         },
-        truncated: active.length < skills.filter((skill) => !skill.fetchPassive()).length
+        truncated: false
     };
 }
 

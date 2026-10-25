@@ -865,7 +865,9 @@ const World = {
         if (hotSession) {
             const marketState = LifeState.snapshot(hotSession.actor?.fetchId?.());
             const marketChat = invoke('GameServer/Bot/Economy/BotAfkTradeChat');
-            if (marketState && marketChat.parse(marketState, message, session)) {
+            // The leader's own companion takes orders, not shop haggling.
+            const ownCompanion = hotSession.partyCompanion === true && hotSession.followPlayerSession === session;
+            if (!ownCompanion && marketState && marketChat.parse(marketState, message, session)) {
                 return BotRemoteChat.replyForState(session, marketState, message, source)
                     .then((result) => result?.ok === true && result.delivered === true);
             }

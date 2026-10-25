@@ -51,7 +51,9 @@ function hideForSupply(session, bot) {
     session.dataSendToOthers?.(ServerResponse.deleteOb(bot.fetchId()), bot);
 }
 
-function request(session, playerSession, itemSelfId, requestedAmount) {
+// options.forSelf: the bot buys the item for its own use (shots, potions,
+// gear) and keeps it, instead of delivering it to the leader by trade.
+function request(session, playerSession, itemSelfId, requestedAmount, options = {}) {
     const bot = session?.actor;
     const player = playerSession?.actor;
     const selfId = Number(itemSelfId || 0);
@@ -108,6 +110,7 @@ function request(session, playerSession, itemSelfId, requestedAmount) {
     const workflowStartedAt = Date.now();
     session.companionShopping = {
         kind: 'player_resource_purchase',
+        forSelf: options.forSelf === true,
         playerSession,
         playerId: player.fetchId(),
         itemId: selfId,
@@ -199,6 +202,7 @@ function request(session, playerSession, itemSelfId, requestedAmount) {
         town: town.name,
         sourceType: Market.sourceType,
         workflowId: session.companionShopping.workflowId,
+        forSelf: options.forSelf === true,
         travel
     };
 }

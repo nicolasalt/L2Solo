@@ -690,4 +690,4 @@ const BotRemoteChat = {
     }
 };
 
-module.exports = { ...BotRemoteChat, personaForState, fallbackReply };
+module.exports = { ...BotRemoteChat, personaForState, fallbackReply, activateNearPlayer };

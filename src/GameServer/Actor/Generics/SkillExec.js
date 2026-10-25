@@ -5,16 +5,27 @@ function canTargetEnemyNpc(npc, data = {}) {
     return npc?.fetchAttackable?.() === true || npc?.fetchIsSummon?.() === true || data.ctrl === true;
 }
 
-function cancelFailedSupportTarget(session, actor, data, skill) {
+function cancelFailedSupportTarget(session, actor, data, skill, reason = 'missing_target') {
     const target = { fetchId: () => Number(data?.id || 0) };
-    invoke('GameServer/Bot/AI/BotActionFeedback').record(session, actor, target, skill, 'rejected', 'missing_target');
-    invoke('GameServer/Bot/AI/BotSupportPlanner').cancelPendingSupportCast(session, actor, target, skill, 'missing_target');
+    invoke('GameServer/Bot/AI/BotActionFeedback').record(session, actor, target, skill, 'rejected', reason);
+    invoke('GameServer/Bot/AI/BotSupportPlanner').cancelPendingSupportCast(session, actor, target, skill, reason);
     invoke('GameServer/Bot/AI/BotPartyChat').cancelExpectedSkillResult(session, actor, target, skill);
+}
+
+// A bot never casts a skill its party leader told it to stop using, unless
+// the leader ordered that exact cast.
+function blockedByLeader(session, skill, data) {
+    if (data?.leaderOrdered === true || !session?.hotPolicyOverlay) return false;
+    return invoke('GameServer/Bot/AI/HotBotPolicyOverlay').skillBlocked(session, skill);
 }
 
 function skillExec(session, actor, data) {
     const skill = actor.skillset.fetchSkill(data.selfId);
     if (!skill) return;
+    if (blockedByLeader(session, skill, data)) {
+        cancelFailedSupportTarget(session, actor, data, skill, 'leader_blocked');
+        return;
+    }
     const SpoilSweep = invoke('GameServer/Npc/SpoilSweep');
 
     if (skill.fetchTargetKind() === 'self') {
