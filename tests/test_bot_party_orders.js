@@ -38,6 +38,16 @@ for (const text of ['how are you?', 'what weapons do you have', 'use Recharge on
     assert.strictEqual(BotPartyOrders.parse(text), null, `"${text}" goes to the LLM`);
 }
 
+// ---- questions every companion answers for itself.
+const PartyDialogueRouter = invoke('GameServer/Bot/AI/PartyDialogueRouter');
+for (const text of ['what weapons is everybody using?', 'guys, how much adena do you have?', 'does everyone have shots?',
+    'what are you all wearing']) {
+    assert.strictEqual(PartyDialogueRouter.isQuestionForEveryone(text), true, `"${text}" is for everyone`);
+}
+for (const text of ['what weapon are you using?', 'everyone attack', 'all back to me', 'Aria, what do you have?']) {
+    assert.strictEqual(PartyDialogueRouter.isQuestionForEveryone(text), false, `"${text}" is not for everyone`);
+}
+
 // ---- a small party: leader + three companions, one boss.
 function actor(id, name, level, extra = {}) {
     return {

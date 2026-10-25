@@ -212,6 +212,11 @@ async function main() {
         routes.length = 0;
         await BotManager.handlePlayerSpeak(player, { kind: 3, text: 'party, regroup' });
         assert.deepStrictEqual(routes, [], 'a plain party order does not wait for the model');
+
+        // A question for everyone reaches every companion, each answering for itself.
+        routes.length = 0;
+        await BotManager.handlePlayerSpeak(player, { kind: 3, text: 'what weapons is everybody using?' });
+        assert.deepStrictEqual(routes.sort(), ['Aria', 'Belen'], 'every companion answers a question for everyone');
     } finally {
         BotBrain.maybeThink = originalBrain;
         BotBrain.isEnabled = originalEnabled;

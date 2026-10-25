@@ -59,6 +59,15 @@ function isGroupAddress(text) {
     return /\b(?:bot|bots|guys|party|team|help|everyone|everybody|anyone|somebody|someone|companions|members|all|each)\b/i.test(String(text || ''));
 }
 
+// "what weapons is everybody using?": each companion answers for itself.
+function isQuestionForEveryone(text) {
+    const value = String(text || '').trim().toLowerCase();
+    const everyone = /\b(?:everyone|everybody|every one|all of you|you all|y'?all|each of you|guys|all)\b/.test(value);
+    const question = /\?\s*$/.test(value) ||
+        /^(?:so\s+|ok\s+|hey\s+)?(?:what|which|who|how|where|when|do|does|did|are|is|can|could|have|has|any|tell me)\b/.test(value);
+    return everyone && question;
+}
+
 function isContinuationMessage(text) {
     const value = String(text || '').trim().toLowerCase();
     return /^(?:yes|yeah|yep|sure|no|nope|ok|okay|alright|right|exactly|do it|go ahead|continue|sounds good|got it|thanks|thank you|and then|what about|is (?:it|that)|are (?:they|those)|(?:what|which) (?:weapon|armor|item|skill|buff|price)|(?:can|could|would) you\b|but\b|and\b)/.test(value);
@@ -316,6 +325,7 @@ module.exports = {
     PARTY_CHANNEL_KIND,
     buildCandidates,
     isGroupAddress,
+    isQuestionForEveryone,
     isContinuationMessage,
     metrics,
     recordMetric,

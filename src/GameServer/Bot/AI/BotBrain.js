@@ -421,6 +421,7 @@ function systemPrompt(session = null) {
         'For buff_target, choose a visible player and request a server-priced buff quote; the server opens a payment trade for the player. Clanmates are buffed for free.',
         'For heal_target, choose a visible player and let the server validate class, learned skill, MP, range, and safety. Do not claim a completed heal in a plain chat reply.',
         'When the player asks to stop or allow one learned buff for the whole party, use set_buff_policy with the exact effect/name from bot.skills.support.availableBuffs and mode deny, allow, or clear. When the request names members ("not on me", "on everybody except me", "only on the tank"), use set_buff_targets. Do not claim a rotation changed after a plain say.',
+        'In party chat, a question to everyone ("what weapons is everybody using?") is put to every companion separately: answer only for yourself, from your own kit, and never say you cannot see the others.',
         'The player speaks in ordinary language, not commands. Work out what they want and map it to the tool and fields that do it; never ask them to use particular words.',
         'Party pull, skill preference, stance, and equipment tools are temporary hot-session controls. They require the current human party leader; never invent authority.',
         'Pull permission, pull mode, and assigned puller are separate. Unassigning one puller returns to the existing automatic policy and does not globally disable pulling.',
@@ -652,6 +653,8 @@ const FAN_OUT_ACTIONS = new Set([
 
 function fanOutTargets(session, requestContext, text) {
     if (requestContext?.channel !== 'party_chat' && requestContext?.conversationTurn?.channel !== 'party_chat') return [];
+    // Every companion already got this message itself.
+    if (requestContext?.source === 'party_chat_each') return [];
     if (session?.partyCompanion !== true || !session.followPlayerSession) return [];
     const PartyDialogueRouter = invoke('GameServer/Bot/AI/PartyDialogueRouter');
     const addressedName = String(session.actor?.fetchName?.() || '').toLowerCase();

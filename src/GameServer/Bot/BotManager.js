@@ -895,6 +895,13 @@ const BotManager = {
             llmResponder: null,
             deterministicRoute: null
         };
+        // A question to the whole party is answered by every companion for
+        // itself, a beat apart, instead of one spokesperson guessing.
+        if (llmEnabled && partyChannel && PartyDialogueRouter.isQuestionForEveryone(rawText)) {
+            const members = invoke('GameServer/Bot/AI/BotPartyOrders').companions(playerSession)
+                .filter((member) => !member.actor.isDead?.());
+            if (members.length > 1) return this.askEveryCompanion(playerSession, members, rawText);
+        }
         const routerTurn = this.routePlayerSpeech(speech);
         if (routerTurn) return routerTurn;
         this.runPlayerSpeechPerBot(speech);
@@ -1034,6 +1041,21 @@ const BotManager = {
                 });
             }
         }
+    },
+
+    askEveryCompanion(playerSession, members, rawText) {
+        const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        return Promise.all(members.map((member, index) => delay(index * 600).then(() => BotDialogueArbiter.route({
+            playerSession,
+            botSession: member,
+            text: rawText,
+            channel: 'party_chat',
+            source: 'party_chat_each',
+            allowFallback: true
+        })).catch((error) => {
+            utils.infoWarn('BotDialogue', 'party question route failed: %s', error.message);
+            return { ok: false, reason: 'route_error' };
+        })));
     },
 
     dispatchPlayerSpeech(speech, session, reason = speech.deterministicRoute?.reason || 'deterministic_route') {
