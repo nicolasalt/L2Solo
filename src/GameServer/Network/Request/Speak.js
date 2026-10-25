@@ -290,6 +290,8 @@ function consume(session, data) {
     }
 
     if (data.kind === 0 && dispatchLocalCommand(session, data)) return; // TODO: Remove, temp solution
+    // Dot commands typed in party chat (".admin", ".sell") run too, instead of reaching the bots.
+    if (data.kind === 3 && String(data.text || '').startsWith('.') && dispatchLocalCommand(session, data)) return;
 
     broadcastSpeech(session, data);
     enterBotDialogue(session, data);
