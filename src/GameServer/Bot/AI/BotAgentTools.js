@@ -70,7 +70,7 @@ const ACTIONS = [
     'go_to',
     'plan_steps',
     'set_buff_targets',
-    'cancel_shopping'
+    'cancel_shopping', 'open_buy_shop', 'close_buy_shop'
 ];
 const NON_MUTATING_ACTIONS = new Set(['none', 'say', 'list_safe_loadouts', 'list_party_candidates']);
 
@@ -82,7 +82,7 @@ const PK_LOCKED_ACTIONS = new Set([
     'list_safe_loadouts', 'equip_candidate', 'optimize_equipment', 'list_party_candidates', 'request_player_join_party',
     'propose_trade', 'give_resources', 'offer_resources', 'update_trade_offer', 'cancel_trade',
     'quote_item', 'counter_offer', 'accept_price', 'decline_price', 'open_negotiated_trade',
-'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps', 'set_buff_targets', 'cancel_shopping'
+'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps', 'set_buff_targets', 'cancel_shopping', 'open_buy_shop', 'close_buy_shop'
 ]);
 
 function clean(text) {
@@ -1432,6 +1432,46 @@ function cancelShopping(context) {
     };
 }
 
+// "set a shop to buy 1000 bones for 1a each": the companion sits down with a
+// native private buy store where it stands, so the leader sells by clicking
+// it. Following pauses until the store is filled or closed, or the leader
+// walks away (FollowingState.tickBuyShop).
+function openBuyShop(context) {
+    const session = context.session, bot = session.actor, decision = context.decision;
+    if (!partyLeaderFor(session)) return { applied: false, reason: 'not_a_party_companion' };
+    const entries = Array.isArray(decision.items) && decision.items.length
+        ? decision.items : [{ itemName: decision.itemName, amount: decision.amount, price: decision.price }];
+    const rows = [], names = [];
+    let total = 0;
+    for (const entry of entries.slice(0, 8)) {
+        const found = nameResolver().resolveSupplyItem(entry?.itemName, entry?.selfId);
+        if (!found.selfId) return { applied: false, reason: found.reason || 'unsupported_supply_item', alternatives: found.alternatives };
+        const count = Math.floor(Number(entry?.amount || 0)), price = Math.floor(Number(entry?.price ?? decision.price ?? 0));
+        if (!(count >= 1) || !(price >= 1)) return { applied: false, reason: 'invalid_buy_shop_line' };
+        if (rows.some((row) => row.selfId === found.selfId)) continue;
+        rows.push({ selfId: found.selfId, enchant: 0, count, price });
+        const name = found.name || invoke('GameServer/Bot/AI/BotSupplyErrand').itemTemplate(found.selfId)?.template?.name || `item ${found.selfId}`;
+        names.push(`${count} ${name} at ${price}a`);
+        total += count * price;
+    }
+    if (!rows.length) return { applied: false, reason: 'invalid_buy_shop_line' };
+    if (total > Number(bot.backpack?.fetchTotalAdena?.() || 0)) return { applied: false, reason: 'cannot_afford' };
+    bot.automation?.abortAll?.();
+    bot.unselect?.();
+    invoke('GameServer/PrivateStore').publishBuyFor(session, rows, `Buying ${names.length === 1 ? names[0].replace(/ at .*/, '') : 'for the party'}`);
+    session.leaderBuyShop = { at: Date.now() };
+    return { applied: true, reason: 'buy_shop_open', playerVisibleReply: `Shop's up, buying ${names.join(', ')}. Click me to sell.` };
+}
+
+function closeBuyShop(context) {
+    const session = context.session;
+    const open = Number(session.actor?.fetchPrivateStoreType?.()) === 3;
+    if (open) invoke('GameServer/PrivateStore').quit(session, 3);
+    session.leaderBuyShop = undefined;
+    return { applied: true, reason: open ? 'buy_shop_closed' : 'buy_shop_not_open',
+        playerVisibleReply: open ? 'Shop closed, following again.' : 'I have no shop open.' };
+}
+
 // "don't use Holy Weapon on me", "Berserker Spirit on everybody except me":
 // every companion that knows the buff takes the rule, whoever was addressed.
 function setBuffTargets(context) {
@@ -1615,6 +1655,8 @@ function registerTools() {
         override_rule: 'Override a built-in caution rule for the party (scope=self for this bot): overrideName ignore_level_limits | engage_raid | no_retreat | spend_all_mp, overrideEnabled true/false. The raid curse, death and missing skills stay hard limits.',
         buy_for_self: 'items: the whole shopping list [{itemName, amount}] (or itemName + amount for one item). Go to the shop that sells it (shots, potions, scrolls, reagents, gear), buy amount with the buyer\'s own Adena, keep it and come back. forMembers names who buys (names, classes like "necromancers", roles like "mages", or "everyone"); empty = this bot.',
         upgrade_gear: 'Buy the best affordable upgrade from the gear plan. slots limits it to what the leader named: ["weapon"] for "best weapon", or helmet, gloves, chest, legs, boots, shield, armor, jewelry. Without slots any slot may change (and better gear in the bag is equipped). Use only when the leader asks for upgrades. forMembers as for buy_for_self.',
+        open_buy_shop: 'Sit down here with a private buy store so the leader can sell to it: items [{itemName, amount, price}] (price = Adena per unit). Following pauses until it is filled, closed, or the leader leaves.',
+        close_buy_shop: 'Close the buy store and follow again.',
         cancel_shopping: 'Take items (items/itemName; none = everything) off the shopping list still waiting for a later trip. A trip already under way finishes.',
         give_adena: 'Open a trade giving the leader adenaAmount Adena ("all" for everything but a 1,000 travel reserve). No cap.',
         go_to: 'Walk to the NPC or player named destinationName (within about 12,000 units) and wait there until called back.',
@@ -1629,7 +1671,7 @@ function registerTools() {
         'set_skill_priority', 'clear_skill_priority', 'set_combat_stance',
         'list_safe_loadouts', 'equip_candidate', 'optimize_equipment',
         'propose_trade', 'give_resources', 'fetch_resources', 'offer_resources', 'update_trade_offer', 'cancel_trade',
-'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps', 'set_buff_targets', 'cancel_shopping'
+'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps', 'set_buff_targets', 'cancel_shopping', 'open_buy_shop', 'close_buy_shop'
     ]);
     const economyActions = new Set([
         'quote_item', 'counter_offer', 'accept_price', 'decline_price', 'open_negotiated_trade'
@@ -1678,7 +1720,9 @@ function registerTools() {
         go_to: goTo,
         plan_steps: planSteps,
         set_buff_targets: setBuffTargets,
-        cancel_shopping: cancelShopping
+        cancel_shopping: cancelShopping,
+        open_buy_shop: openBuyShop,
+        close_buy_shop: closeBuyShop
     };
 
     ACTIONS.forEach((name) => {

@@ -274,8 +274,8 @@ function schema(allowedActions = BotAgentTools.ACTIONS, session = null) {
             items: {
                 type: 'array',
                 maxItems: 20,
-                items: { type: 'object', properties: { itemName: { type: 'string' }, amount: { type: 'number' } } },
-                description: 'buy_for_self: the whole shopping list, [{itemName, amount}]. One trip buys what one town sells; the rest follows.'
+                items: { type: 'object', properties: { itemName: { type: 'string' }, amount: { type: 'number' }, price: { type: 'number' } } },
+                description: 'buy_for_self: the whole shopping list, [{itemName, amount}]. One trip buys what one town sells; the rest follows. open_buy_shop: [{itemName, amount, price}] with price per unit.'
             },
             slots: {
                 type: 'array',

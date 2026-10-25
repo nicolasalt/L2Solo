@@ -118,10 +118,24 @@ function publishBuy(session, rows) {
     return true;
 }
 
+// A bot companion's buy store, opened by its leader's order: no manage
+// window, the rows are already checked by the caller.
+function publishBuyFor(session, rows, title = '') {
+    const actor = session?.actor;
+    if (!canManage(actor)) return false;
+    const current = store(actor, BUY);
+    current.items = rows;
+    current.title = String(title || '').slice(0, 52);
+    actor.setPrivateStoreType(BUY); actor.state?.setSeated?.(true);
+    sendSitState(session, actor);
+    broadcast(session, actor, ServerResponse.privateStoreBuyMsg(actor, current.title));
+    return true;
+}
+
 function quit(session, type) {
     const actor = session?.actor;
     if (!actor || ![type, type === SELL ? SELL_MANAGE : BUY_MANAGE].includes(Number(actor.fetchPrivateStoreType()))) return false;
     actor.setPrivateStoreType(0); actor.state?.setSeated?.(false); session.afkTradeDraft = null; sendSitState(session, actor); broadcast(session, actor); return true;
 }
 
-module.exports = { SELL, BUY, open, setTitle, publishSell, publishBuy, quit, checkRowCount };
+module.exports = { SELL, BUY, open, setTitle, publishSell, publishBuy, publishBuyFor, quit, checkRowCount };

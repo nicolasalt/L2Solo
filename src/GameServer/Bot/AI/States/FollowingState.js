@@ -864,6 +864,7 @@ const FollowingState = {
         const ctx = { session, bot, Generics, BotAI };
         if (session.taskQueue) invoke('GameServer/Bot/AI/BotTaskQueue').tick(session);
         if (session.supplyQueue?.length) invoke('GameServer/Bot/AI/BotSupplyErrand').continueQueue(session);
+        if (session.leaderBuyShop && FollowingState.tickBuyShop(ctx)) return;
         if (FollowingState.tickLeaderPresence(ctx)) return;
         if (FollowingState.tickLeaderRevival(ctx)) return;
         if (FollowingState.tickPartyContext(ctx)) return;
@@ -877,6 +878,23 @@ const FollowingState = {
         FollowingState.tickCombat(ctx);
         FollowingState.tickLootAndLeaderTarget(ctx);
         FollowingState.tickIdleFollow(ctx);
+    },
+
+    // A buy store the leader ordered keeps the companion seated where it is.
+    // It closes when filled (PrivateStoreTrade quits it), after 15 minutes,
+    // or once the leader is out of sight; then following resumes.
+    tickBuyShop(ctx) {
+        const { session, bot } = ctx;
+        const leader = session.followPlayerSession?.actor;
+        const open = Number(bot.fetchPrivateStoreType?.()) === 3;
+        const away = !leader || leader.fetchIsOnline?.() === false
+            || Math.hypot(leader.fetchLocX() - bot.fetchLocX(), leader.fetchLocY() - bot.fetchLocY()) > 2500;
+        if (open && !away && Date.now() - session.leaderBuyShop.at < 15 * 60 * 1000) return true;
+        if (open) invoke('GameServer/PrivateStore').quit(session, 3);
+        session.leaderBuyShop = undefined;
+        if (session.followPlayerSession) invoke('GameServer/Bot/BotManager').botTell(session, session.followPlayerSession,
+            open ? 'Closed my shop, following again.' : 'Shop filled, thanks! Following again.');
+        return false;
     },
 
     // The companion still belongs to a party with an online leader.
