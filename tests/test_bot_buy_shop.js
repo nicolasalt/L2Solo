@@ -16,6 +16,8 @@ let store = null, storeType = 0, seated = false;
 const actor = {
     fetchId: () => 901, fetchName: () => 'nomercy', fetchIsOnline: () => true, isDead: () => false,
     fetchLocX: () => 100, fetchLocY: () => 0, fetchLocZ: () => 0, unselect() {},
+    // The real automation needs the actor it stops.
+    automation: { abortAll: (target) => { if (!target?.state) throw new TypeError("Cannot read properties of undefined (reading 'state')"); } },
     fetchPrivateStore: () => store, setPrivateStore: (value) => { store = value; },
     fetchPrivateStoreType: () => storeType, setPrivateStoreType: (value) => { storeType = value; },
     state: { setSeated: (value) => { seated = value; }, fetchCasts: () => false, fetchHits: () => false },

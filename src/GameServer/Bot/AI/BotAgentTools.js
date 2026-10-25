@@ -1456,7 +1456,7 @@ function openBuyShop(context) {
     }
     if (!rows.length) return { applied: false, reason: 'invalid_buy_shop_line' };
     if (total > Number(bot.backpack?.fetchTotalAdena?.() || 0)) return { applied: false, reason: 'cannot_afford' };
-    bot.automation?.abortAll?.();
+    bot.automation?.abortAll?.(bot);
     bot.unselect?.();
     invoke('GameServer/PrivateStore').publishBuyFor(session, rows, `Buying ${names.length === 1 ? names[0].replace(/ at .*/, '') : 'for the party'}`);
     session.leaderBuyShop = { at: Date.now() };
