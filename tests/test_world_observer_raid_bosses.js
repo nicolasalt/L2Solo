@@ -34,6 +34,10 @@ const World = invoke('GameServer/World/World');
     const now = Date.now();
     let snapshot = Observer.raidBossSnapshot(now);
     const live = snapshot.bosses.find((boss) => boss.id === definition.id);
+    assert(snapshot.bosses.every((boss, index, all) => index === 0
+        || Number(all[index - 1].level) < Number(boss.level)
+        || (Number(all[index - 1].level) === Number(boss.level) && all[index - 1].name.localeCompare(boss.name) <= 0)),
+    'the boss list is ordered by level, then by name');
     assert.strictEqual(snapshot.counts.alive, 1);
     assert.strictEqual(live.status, 'alive');
     assert.strictEqual(live.objectId, liveBoss.fetchId());

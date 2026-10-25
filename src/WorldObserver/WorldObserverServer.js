@@ -158,7 +158,7 @@ function raidBossSnapshot(now = Date.now()) {
             remainingMs: respawnAt ? Math.max(0, respawnAt - now) : 0,
             respawnMs: definition.respawnMs
         };
-    }).sort((left, right) => left.name.localeCompare(right.name));
+    }).sort((left, right) => Number(left.level || 0) - Number(right.level || 0) || left.name.localeCompare(right.name));
 
     return {
         generatedAt: now,
