@@ -466,7 +466,11 @@ const GIRAN_BODY_ARMOR_BASE = [
     [393, 152000]
 ];
 
+// Cursed Bone (Necromancer summons) is sold in C4 only by Cema in Hardin's
+// Academy, far from every town; every magic shop carries it so bots and
+// players can restock where they actually are.
 const MAGIC_BOOK_BASE = [
+    [2508, 300],
     [1294, 75],
     [1095, 75],
     [1048, 100],
