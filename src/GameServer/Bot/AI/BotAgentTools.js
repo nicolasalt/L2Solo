@@ -712,13 +712,16 @@ function fetchResources(context) {
         ? invoke('GameServer/Bot/AI/BotNameResolver').resolveSupplyItem(requestedName)
         : null;
     if (resolved && !resolved.selfId) return { applied: false, reason: resolved.reason, alternatives: resolved.alternatives };
-    const result = invoke('GameServer/Bot/AI/BotSupplyErrand').request(
-        context.session,
-        player,
-        context.decision.supplyItemId || resolved?.selfId,
-        context.decision.supplyAmount || context.decision.amount
-    );
+    const SupplyErrand = invoke('GameServer/Bot/AI/BotSupplyErrand');
+    const itemSelfId = context.decision.supplyItemId || resolved?.selfId;
+    const amount = context.decision.supplyAmount || context.decision.amount;
+    let result = SupplyErrand.request(context.session, player, itemSelfId, amount);
+    if (result.reason === 'supply_errand_active') result = SupplyErrand.amend(context.session, itemSelfId, amount, { forSelf: false });
     if (!result.ok) return { applied: false, reason: result.reason, ...result };
+    if (result.reason === 'supply_errand_amended') {
+        return { applied: true, outcome: 'pending', reason: result.reason, itemName: result.itemName, amount: result.amount, cost: result.cost,
+            playerVisibleReply: `Changed it to ${result.amount} ${result.itemName} (${Number(result.cost).toLocaleString('en-US')} Adena).` };
+    }
     return {
         applied: true,
         outcome: 'pending',
@@ -1157,8 +1160,14 @@ function buyForOne(context) {
             requested: String(context.decision.itemName || '').slice(0, 64) };
     }
     const amount = Math.floor(Number(context.decision.amount || context.decision.supplyAmount || 1));
-    const result = invoke('GameServer/Bot/AI/BotSupplyErrand').request(session, leader, resolved.selfId, amount, { forSelf: true });
+    const SupplyErrand = invoke('GameServer/Bot/AI/BotSupplyErrand');
+    let result = SupplyErrand.request(session, leader, resolved.selfId, amount, { forSelf: true });
+    if (result.reason === 'supply_errand_active') result = SupplyErrand.amend(session, resolved.selfId, amount, { forSelf: true });
     if (!result.ok) return { applied: false, ...result, reason: result.reason };
+    if (result.reason === 'supply_errand_amended') {
+        return { applied: true, outcome: 'pending', reason: result.reason, itemName: result.itemName, amount: result.amount, cost: result.cost,
+            town: result.town, playerVisibleReply: `Changed it to ${result.amount} ${result.itemName} (${Number(result.cost).toLocaleString('en-US')} Adena).` };
+    }
     return {
         applied: true,
         outcome: 'pending',
@@ -1494,7 +1503,7 @@ function registerTools() {
         hunt: 'Return to independent hunting.',
         rest: 'Sit and recover.',
         shop: 'Go to town for normal restock behavior.',
-        fetch_resources: 'For a party leader request, buy an exact new quantity of an item from the server-owned city shop catalog, return beside the leader, and offer that purchased quantity in native trade.',
+        fetch_resources: 'Only when the leader wants the item for themselves ("bring me", "buy me", "for me"): buy an exact new quantity of an item from the server-owned city shop catalog, return beside the leader, and offer that purchased quantity in native trade.',
         move_to_spot: 'Move to one of the provided candidate spot ids.',
         buff_target: 'Quote this buffer\'s useful learned buffs to a visible player and open a payment trade. Clanmates pay nothing.',
         set_buff_policy: 'Switch one learned buff on or off for the whole party. For a buff on or off for particular members, use set_buff_targets.',
@@ -1733,6 +1742,7 @@ function rejectionReply(result = {}) {
         case 'destination_too_far': return `${result.destination || 'That'} is too far to walk; teleport closer first.`;
         case 'invalid_buff_target_mode': return 'Tell me who should get that buff, or who should not.';
         case 'missing_buff_targets': return 'Who should that be about?';
+        case 'supply_already_bought': return 'I already paid for that one; ask again once I am back and I will make another trip.';
         case 'no_matching_members': return `Nobody in the party matches${requested || ' that'}.`;
         case 'invalid_task_plan': return 'I could not turn that into steps I can do.';
         case 'task_plan_active': return 'I am still carrying out your last plan.';

@@ -187,6 +187,25 @@ try {
         Resolver.resolveSupplyItem = originalResolve;
     }
 
+    // "go buy cursed bones" is for the bot; "bring me cursed bones" is for the leader.
+    assert.strictEqual(BotBrain.buyForWhom({ action: 'fetch_resources', supplyItemName: 'Cursed Bone', supplyAmount: 20 }, 'go buy cursed bones').action, 'buy_for_self');
+    assert.strictEqual(BotBrain.buyForWhom({ action: 'fetch_resources', supplyItemName: 'Cursed Bone' }, 'bring me cursed bones').action, 'fetch_resources');
+    assert.strictEqual(BotBrain.buyForWhom({ action: 'fetch_resources' }, 'buy shots for me').action, 'fetch_resources');
+
+    // "20 only? this is for 20 spells!": a second order resizes the trip before the purchase.
+    const SupplyErrandModule = invoke('GameServer/Bot/AI/BotSupplyErrand');
+    const errandBot = { actor: { backpack: { fetchItemFromSelfId: () => ({ fetchAmount: () => 100000 }) } },
+        companionShopping: { kind: 'player_resource_purchase', itemId: 2508, itemName: 'Cursed Bone', amount: 20, unitPrice: 360,
+            totalCost: 7200, sourceType: 'npc', forSelf: false, target: { town: 'Dion' } } };
+    const resized = SupplyErrandModule.amend(errandBot, 2508, 40, { forSelf: true });
+    assert.strictEqual(resized.ok, true, resized.reason);
+    assert.strictEqual(errandBot.companionShopping.amount, 40);
+    assert.strictEqual(errandBot.companionShopping.totalCost, 14400);
+    assert.strictEqual(errandBot.companionShopping.forSelf, true, 'the latest order decides who keeps it');
+    assert.strictEqual(SupplyErrandModule.amend(errandBot, 1835, 40).reason, 'supply_errand_active', 'another item is a new trip');
+    errandBot.companionShopping.purchaseStarted = true;
+    assert.strictEqual(SupplyErrandModule.amend(errandBot, 2508, 60).reason, 'supply_already_bought');
+
     // A plan needs real steps.
     const plan = BotAgentTools.execute(bot, decision('plan_steps', { steps: [{ action: 'self_destruct' }] }), [], ctx());
     assert.strictEqual(plan.reason, 'invalid_task_plan');

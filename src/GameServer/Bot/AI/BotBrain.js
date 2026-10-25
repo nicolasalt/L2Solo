@@ -439,7 +439,8 @@ function systemPrompt(session = null) {
         'Ambient mood and intent are server-owned soft context. Treat an active ambient scene as factual only when bot.ambient.scene is present; never start or claim a scene from mood alone.',
         'The contextFragments field is bounded and includes recent authoritative events; treat summaries as memory, never as permission to perform an action. Action metadata is authoritative only when serverApplied or actionResult.ok is true.',
         'Resource-gift trade tools can open a native window only with the current party leader; give_resources opens the window and displays the requested line in one server action. Companion negotiation tools use only the active real player pair, reserve safe inventory without mutating it, expose only server-owned bounds, allow at most three negotiation rounds, and release reservations on cancel/expiry. Never claim completion before native player confirmation.',
-        'When the party leader explicitly asks the bot to go to town and buy a new item, use fetch_resources with the exact selfId from the compact server-owned supply catalog (entries are [selfId, name, price, town]) and the requested quantity. If the compact catalog does not show the item, pass its exact requested name in supplyItemName; the server resolves it against the full NPC catalog. This buys a new quantity even if the bot already owns some; do not substitute give_resources from existing stock. If the server reports insufficient Adena, say how much is needed and wait for the player to transfer Adena before retrying. The server returns beside the leader and opens native trade only when the party is safe, so describe it as pending.',
+        '"Go buy X" means buy it for yourself with buy_for_self, especially shots, potions and reagents you use (bot.skills.kit shows what each cast uses up). Only when the leader wants it for themselves ("bring me", "buy me", "for me") use fetch_resources. If the leader gives a number of casts ("for 20 spells"), multiply by what one cast uses. Asking again for an item already being fetched changes the amount.',
+        'When the party leader explicitly asks the bot to go to town and buy a new item for the leader, use fetch_resources with the exact selfId from the compact server-owned supply catalog (entries are [selfId, name, price, town]) and the requested quantity. If the compact catalog does not show the item, pass its exact requested name in supplyItemName; the server resolves it against the full NPC catalog. This buys a new quantity even if the bot already owns some; do not substitute give_resources from existing stock. If the server reports insufficient Adena, say how much is needed and wait for the player to transfer Adena before retrying. The server returns beside the leader and opens native trade only when the party is safe, so describe it as pending.',
         'For party candidate discovery, use the server-owned party.candidates list in the current payload and answer from it; do not assume a later tool result will be sent back to you in this turn.',
         'Never invent unavailable actions, players, items, or spells.'
     ].join(' ');
@@ -649,6 +650,15 @@ async function enforceHonesty(decision, payload, cfg, session, requestContext, v
         result = { ...result, reply: HONEST_FALLBACK_REPLY, reason: `honesty_guard:${String(result.reason || '').slice(0, 80)}` };
     }
     return result;
+}
+
+// "go buy cursed bones" is for the bot itself; only "for me" / "bring me"
+// sends the purchase to the leader.
+function buyForWhom(decision, text) {
+    if (decision?.action !== 'fetch_resources') return decision;
+    if (/\b(?:me|my|mine|i need|i want|for us|bring|give|deliver|hand)\b/i.test(String(text || ''))) return decision;
+    return { ...decision, action: 'buy_for_self', itemName: decision.itemName || decision.supplyItemName || '',
+        amount: decision.amount || decision.supplyAmount, reason: `buy_for_whom:${String(decision.reason || '').slice(0, 80)}` };
 }
 
 // W8: an order to the whole party ("all use fire spells", "everyone buy
@@ -1023,6 +1033,7 @@ const BotBrain = {
     },
 
     applyPartyPolicy,
+    buyForWhom,
     claimsUnbackedAction,
     isPartyRequest,
     isPartyCandidateRequest,
@@ -1319,6 +1330,7 @@ const BotBrain = {
                 }
                 providerResult = await enforceHonesty(providerResult, payload, cfg, session, requestContext, visiblePlayers);
                 providerResult = applyPartyPolicy(session, providerResult, requestContext, text);
+                providerResult = buyForWhom(providerResult, text);
                 recordInferenceEvent(session, event, providerResult, requestContext);
                 const actionResult = await LangfuseTracing.withObservation(
                     'bot.tool.execute',

@@ -207,6 +207,30 @@ function request(session, playerSession, itemSelfId, requestedAmount, options = 
     };
 }
 
+// A second order for the item already being fetched changes the amount
+// ("20 only? get 40"), as long as the shop has not been paid yet.
+function amend(session, itemSelfId, requestedAmount, options = {}) {
+    const errand = session?.companionShopping;
+    const amount = Math.floor(Number(requestedAmount || 0));
+    if (errand?.kind !== 'player_resource_purchase' || Number(errand.itemId) !== Number(itemSelfId)) return { ok: false, reason: 'supply_errand_active' };
+    if (errand.purchaseStarted || session.pendingResourceDelivery) return { ok: false, reason: 'supply_already_bought' };
+    if (amount < 1 || amount > MAX_REQUEST_AMOUNT) return { ok: false, reason: 'invalid_supply_amount' };
+    const template = itemTemplate(itemSelfId);
+    // The original order already passed this check when it asked for more than one.
+    const stackable = template ? template.etc?.stackable === true : Number(errand.amount) > 1;
+    if (!stackable && amount !== 1) return { ok: false, reason: 'non_stackable_supply_amount' };
+    if (!['npc', 'configured_store'].includes(errand.sourceType)) return { ok: false, reason: 'supply_errand_active' };
+    const cost = Number(errand.unitPrice) * amount;
+    const adena = actorAdena(session.actor);
+    if (adena < cost) return { ok: false, reason: 'not_enough_adena', cost, adena, itemName: errand.itemName };
+    errand.amount = amount;
+    errand.totalCost = cost;
+    // The latest order also says who keeps it.
+    if (typeof options.forSelf === 'boolean') errand.forSelf = options.forSelf;
+    return { ok: true, outcome: 'pending', reason: 'supply_errand_amended', itemSelfId: Number(itemSelfId), itemName: errand.itemName,
+        amount, cost, town: errand.target?.town || null, forSelf: errand.forSelf === true };
+}
+
 async function purchaseAtDestination(bot, errand) {
     if (!errand || !bot) return { ok: false, reason: 'missing_supply_errand' };
     // Retry the original accepted obligation before looking up a new quote.
@@ -326,6 +350,7 @@ async function purchaseAtDestination(bot, errand) {
 module.exports = {
     MAX_REQUEST_AMOUNT,
     actorAdena,
+    amend,
     itemTemplate,
     ownsCompanion,
     purchaseAtDestination,

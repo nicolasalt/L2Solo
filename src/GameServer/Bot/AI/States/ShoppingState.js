@@ -739,6 +739,7 @@ module.exports = {
             let deliveryReady = false;
             try {
                 const BotSupplyErrand = invoke('GameServer/Bot/AI/BotSupplyErrand');
+                companionErrand.purchaseStarted = true;
                 const purchased = await BotSupplyErrand.purchaseAtDestination(bot, companionErrand);
                 if (purchased.pending) return;
                 if (!purchased.ok || Number(purchased.delta) !== Number(companionErrand.amount)) {

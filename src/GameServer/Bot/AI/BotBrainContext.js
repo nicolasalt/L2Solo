@@ -273,8 +273,18 @@ function compactSkill(skill) {
         skill.fetchLevel(),
         skill.fetchConsumedMp() || 0,
         Math.round((skill.fetchReuseTime() || 0) / 1000),
-        skillKind(skill)
+        skillKind(skill),
+        reagent(skill)
     ];
+}
+
+// What one cast uses up, e.g. "1x Cursed Bone"; '' for none.
+function reagent(skill) {
+    const itemId = Number(skill.fetchItemConsumeId?.() || 0);
+    if (!itemId) return '';
+    const count = Math.max(1, Number(skill.fetchItemConsumeCount?.() || 1));
+    const name = invoke('GameServer/Bot/AI/BotSupplyErrand').itemTemplate(itemId)?.template?.name || `item ${itemId}`;
+    return `${count}x ${name}`;
 }
 
 function skillsSnapshot(actor, text = '') {
@@ -289,7 +299,7 @@ function skillsSnapshot(actor, text = '') {
 
     return {
         kit: learned.map(compactSkill),
-        kitFormat: '[skillId, name, level, mpCost, reuseSeconds, kind]',
+        kitFormat: '[skillId, name, level, mpCost, reuseSeconds, kind, itemsUsedPerCast]',
         active,
         passiveCount: skills.filter((skill) => skill.fetchPassive()).length,
         support: {
