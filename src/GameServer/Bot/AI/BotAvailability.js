@@ -108,14 +108,22 @@ function emptyResult(playerSession, botSubject, options = {}) {
 // hostile shared relation) or one that ended its party in the last minutes.
 function socialRefusal(memory, at) {
     if (Number(memory?.trust || 0) <= -6) return 'relationship_hostile';
-    if (BotSocialMemory.recentlyAbandoned(memory, at)) return 'recently_abandoned';
+    if (require('../Population/PopulationConfig').partyHistoryEnabled
+        && BotSocialMemory.recentlyAbandoned(memory, at)) return 'recently_abandoned';
     return null;
+}
+
+// alwaysJoinPlayerParty turns every player invite into the friend path.
+function withConfiguredForce(options) {
+    return !options.forceFriend && require('../Population/PopulationConfig').alwaysJoinPlayerParty
+        ? { ...options, forceFriend: true } : options;
 }
 
 const BotAvailability = {
     socialRefusal,
 
     evaluate(playerSession, botSession, options = {}) {
+        options = withConfiguredForce(options);
         const player = playerSession?.actor;
         const bot = botSession?.actor;
         const result = emptyResult(playerSession, botSession, options);
@@ -147,6 +155,7 @@ const BotAvailability = {
             }
         }
         result.available = reason === 'available';
+        result.forceFriend = options.forceFriend === true;
         result.reason = reason;
         result.reasonText = result.partyDecision?.reason === reason
             ? result.partyDecision.reasonText : reasonText(reason);
@@ -154,6 +163,7 @@ const BotAvailability = {
     },
 
     evaluateState(playerSession, state, options = {}) {
+        options = withConfiguredForce(options);
         const player = playerSession?.actor;
         const result = emptyResult(playerSession, state, options);
         const timestamp = Number(options.timestamp ?? Date.now());
@@ -187,6 +197,7 @@ const BotAvailability = {
             }
         }
         result.available = reason === 'available';
+        result.forceFriend = options.forceFriend === true;
         result.reason = reason;
         result.reasonText = result.partyDecision?.reason === reason
             ? result.partyDecision.reasonText : reasonText(reason);

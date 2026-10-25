@@ -18,10 +18,11 @@ function evaluate(subject, memory = {}, options = {}) {
         return { accept: true, reason: 'available', reasonText: 'available', score: null, persona: null };
     }
 
-    const trust = Number(memory.trust || 0);
-    const familiarity = Number(memory.familiarity || 0);
+    const history = require('../Population/PopulationConfig').partyHistoryEnabled;
+    const trust = history ? Number(memory.trust || 0) : 0;
+    const familiarity = history ? Number(memory.familiarity || 0) : 0;
     const relationship = BotSocialMemory.relationship(memory);
-    const knownPartner = (relationship === 'trusted' || relationship === 'friendly') && Number(memory.groupRuns || 0) >= 1;
+    const knownPartner = history && (relationship === 'trusted' || relationship === 'friendly') && Number(memory.groupRuns || 0) >= 1;
     // The shared persona score (PersonaPartyPolicy.baseScore) plus what the
     // bot knows of this player.
     const score = Math.round(clamp(

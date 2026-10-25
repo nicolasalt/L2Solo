@@ -7,6 +7,12 @@ const DEFAULTS = {
     economyDiagnosticsBotIds: '',
     // Personal knowledge errors and learning by own actions share one switch.
     knowledgeErrorsEnabled: true,
+    // Player party invites read past trust, familiarity and abandoned parties.
+    // Off = every invite is judged as from a stranger; hostility still refuses.
+    partyHistoryEnabled: true,
+    // Every player party invite is treated as a friend invite: no persona,
+    // relationship, level-gap, travel or merchant refusal.
+    alwaysJoinPlayerParty: false,
     backgroundResolverEnabled: true,
     backgroundPartyEnabled: true,
     phasePolicyEnabled: true,
@@ -235,6 +241,8 @@ const ENV_KEYS = {
     staticBuyersDisabled: 'BOT_STATIC_BUYERS_DISABLED',
     staticShotsDisabled: 'BOT_STATIC_SHOTS_DISABLED',
     knowledgeErrorsEnabled: 'BOT_KNOWLEDGE_ERRORS_ENABLED',
+    partyHistoryEnabled: 'BOT_PARTY_HISTORY_ENABLED',
+    alwaysJoinPlayerParty: 'BOT_ALWAYS_JOIN_PLAYER_PARTY',
     pvpAggression: 'BOT_PVP_AGGRESSION',
     enabled: 'BOT_POPULATION_ENABLED',
     backgroundResolverEnabled: 'BOT_BACKGROUND_RESOLVER_ENABLED',
