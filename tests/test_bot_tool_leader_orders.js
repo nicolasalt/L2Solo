@@ -208,6 +208,33 @@ try {
     errandBot.companionShopping.purchaseStarted = true;
     assert.strictEqual(SupplyErrandModule.amend(errandBot, 2508, 60).reason, 'supply_already_bought');
 
+    // "best weapon you can afford" looks at the weapon slots only; the bag is not re-equipped.
+    const Shopping = invoke('GameServer/Bot/AI/CompanionEquipmentShopping');
+    const originalPlan = Shopping.planErrand;
+    const AIModule = invoke('GameServer/Bot/BotAI');
+    const originalTown = AIModule.getClosestTown;
+    let planArgs = null;
+    try {
+        AIModule.getClosestTown = () => ({ name: 'Giran', x: 0, y: 0, z: 0 });
+        Shopping.planErrand = (...args) => { planArgs = args; return null; };
+        const weaponOnly = BotAgentTools.execute(bot, decision('upgrade_gear', { slots: ['weapon'] }), [], ctx());
+        assert.strictEqual(weaponOnly.reason, 'no_affordable_upgrade');
+        assert.deepStrictEqual(planArgs[4].includes(7) || planArgs[4].includes(14), false, 'weapon slots stay open');
+        assert(planArgs[4].includes(10) && planArgs[4].includes(11), 'armor slots are excluded');
+    } finally {
+        Shopping.planErrand = originalPlan;
+        AIModule.getClosestTown = originalTown;
+    }
+
+    // Queued shopping can be dropped by name, or all of it.
+    bot.supplyQueue = [{ selfId: 1, amount: 1, name: 'Mystic\'s Tunic' }, { selfId: 2, amount: 1000, name: 'Cursed Bone' }];
+    const dropped = BotAgentTools.execute(bot, decision('cancel_shopping', { items: [{ itemName: 'mystics tunic' }] }), [], ctx());
+    assert.strictEqual(dropped.applied, true);
+    assert.deepStrictEqual(bot.supplyQueue.map((entry) => entry.name), ['Cursed Bone']);
+    assert.match(dropped.playerVisibleReply, /Dropped from my list: Mystic's Tunic/);
+    BotAgentTools.execute(bot, decision('cancel_shopping', {}), [], ctx());
+    assert.deepStrictEqual(bot.supplyQueue, []);
+
     // A plan needs real steps.
     const plan = BotAgentTools.execute(bot, decision('plan_steps', { steps: [{ action: 'self_destruct' }] }), [], ctx());
     assert.strictEqual(plan.reason, 'invalid_task_plan');

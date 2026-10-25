@@ -69,7 +69,8 @@ const ACTIONS = [
     'give_adena',
     'go_to',
     'plan_steps',
-    'set_buff_targets'
+    'set_buff_targets',
+    'cancel_shopping'
 ];
 const NON_MUTATING_ACTIONS = new Set(['none', 'say', 'list_safe_loadouts', 'list_party_candidates']);
 
@@ -81,7 +82,7 @@ const PK_LOCKED_ACTIONS = new Set([
     'list_safe_loadouts', 'equip_candidate', 'optimize_equipment', 'list_party_candidates', 'request_player_join_party',
     'propose_trade', 'give_resources', 'offer_resources', 'update_trade_offer', 'cancel_trade',
     'quote_item', 'counter_offer', 'accept_price', 'decline_price', 'open_negotiated_trade',
-'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps', 'set_buff_targets'
+'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps', 'set_buff_targets', 'cancel_shopping'
 ]);
 
 function clean(text) {
@@ -1206,10 +1207,27 @@ function buyForOne(context) {
     };
 }
 
+// Equipment slot words the leader uses, as the planner's slot numbers.
+const SLOT_GROUPS = {
+    weapon: [7, 14], shield: [8], helmet: [6], head: [6], gloves: [9], chest: [10, 15], tunic: [10, 15],
+    legs: [11], pants: [11], stockings: [11], boots: [12], feet: [12],
+    armor: [6, 8, 9, 10, 11, 12, 15], jewelry: [1, 2, 3, 4, 5], earring: [1, 2], necklace: [3], ring: [4, 5]
+};
+const ALL_SLOTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15];
+
+function allowedSlots(decision) {
+    const words = (Array.isArray(decision.slots) ? decision.slots : []).map((word) => String(word || '').trim().toLowerCase().replace(/s$/, ''));
+    const slots = new Set(words.flatMap((word) => SLOT_GROUPS[word] || SLOT_GROUPS[`${word}s`] || []));
+    return slots.size ? slots : null;
+}
+
 function upgradeGearForOne(context) {
     const session = context.session;
     const bot = session.actor;
-    const upgrades = BotEquipmentUpgrade.applyBestUpgrades(session);
+    // Only the slots the leader named ("best weapon" = weapon slots only).
+    const slots = allowedSlots(context.decision);
+    const excludedSlots = slots ? ALL_SLOTS.filter((slot) => !slots.has(slot)) : [];
+    const upgrades = slots ? [] : BotEquipmentUpgrade.applyBestUpgrades(session);
     if (upgrades.length) {
         return {
             applied: true,
@@ -1224,7 +1242,7 @@ function upgradeGearForOne(context) {
     const town = { name: closest.name, x: closest.x, y: closest.y, z: closest.z };
     let errand = null;
     try {
-        errand = invoke('GameServer/Bot/AI/CompanionEquipmentShopping').planErrand(session, bot, town);
+        errand = invoke('GameServer/Bot/AI/CompanionEquipmentShopping').planErrand(session, bot, town, 0, excludedSlots);
     } catch (_) { errand = null; }
     if (errand?.pending) return { applied: false, reason: 'gear_plan_pending' };
     if (!errand?.itemId) return { applied: false, reason: 'no_affordable_upgrade' };
@@ -1383,6 +1401,28 @@ function buyForSelf(context) {
 
 function upgradeGear(context) {
     return forEachNamedMember(context, upgradeGearForOne, (result) => result.playerVisibleReply || 'upgrading.');
+}
+
+// Takes items off the shopping list still waiting for a later trip (all of
+// them when none are named). A trip already under way finishes.
+function cancelShopping(context) {
+    const session = context.session;
+    const queue = session.supplyQueue || [];
+    const names = (Array.isArray(context.decision.items) ? context.decision.items.map((entry) => entry?.itemName || entry) : [])
+        .concat(context.decision.itemName ? [context.decision.itemName] : [])
+        .map((name) => String(name || '').trim()).filter(Boolean);
+    const itemName = (entry) => entry.name || invoke('GameServer/Bot/AI/BotSupplyErrand').itemTemplate(entry.selfId)?.template?.name || `item ${entry.selfId}`;
+    const removed = names.length
+        ? queue.filter((entry) => names.some((name) => nameResolver().score(name, itemName(entry)) >= nameResolver().MIN_SCORE))
+        : [...queue];
+    session.supplyQueue = queue.filter((entry) => !removed.includes(entry));
+    const current = session.companionShopping?.itemName;
+    return {
+        applied: true,
+        reason: removed.length ? 'shopping_cancelled' : 'shopping_nothing_queued',
+        playerVisibleReply: (removed.length ? `Dropped from my list: ${removed.map(itemName).join(', ')}.` : 'Nothing like that on my list.')
+            + (current ? ` The trip for ${current} is already under way.` : '')
+    };
 }
 
 // "don't use Holy Weapon on me", "Berserker Spirit on everybody except me":
@@ -1567,7 +1607,8 @@ function registerTools() {
         set_skill_rule: 'Set a rotation rule: skillRule no_debuffs | allow_debuffs | recharge_below (ruleValue = MP percent; healers Recharge anyone below it, in combat too) | no_recharge_rule | clear.',
         override_rule: 'Override a built-in caution rule for the party (scope=self for this bot): overrideName ignore_level_limits | engage_raid | no_retreat | spend_all_mp, overrideEnabled true/false. The raid curse, death and missing skills stay hard limits.',
         buy_for_self: 'items: the whole shopping list [{itemName, amount}] (or itemName + amount for one item). Go to the shop that sells it (shots, potions, scrolls, reagents, gear), buy amount with the buyer\'s own Adena, keep it and come back. forMembers names who buys (names, classes like "necromancers", roles like "mages", or "everyone"); empty = this bot.',
-        upgrade_gear: 'Equip any better gear in the bag; otherwise pick the next affordable upgrade from the gear plan, go buy it and come back. forMembers as for buy_for_self.',
+        upgrade_gear: 'Buy the best affordable upgrade from the gear plan. slots limits it to what the leader named: ["weapon"] for "best weapon", or helmet, gloves, chest, legs, boots, shield, armor, jewelry. Without slots any slot may change (and better gear in the bag is equipped). Use only when the leader asks for upgrades. forMembers as for buy_for_self.',
+        cancel_shopping: 'Take items (items/itemName; none = everything) off the shopping list still waiting for a later trip. A trip already under way finishes.',
         give_adena: 'Open a trade giving the leader adenaAmount Adena ("all" for everything but a 1,000 travel reserve). No cap.',
         go_to: 'Walk to the NPC or player named destinationName (within about 12,000 units) and wait there until called back.',
         set_buff_targets: 'Who gets one buff (skillName): buffTargetMode never_on (skip the members in buffTargetNames), everyone_except (every member, even off-role, except those named; none named = everyone), only_on (only those named), or clear. "me" is the leader. Every companion that knows the buff applies it.',
@@ -1581,7 +1622,7 @@ function registerTools() {
         'set_skill_priority', 'clear_skill_priority', 'set_combat_stance',
         'list_safe_loadouts', 'equip_candidate', 'optimize_equipment',
         'propose_trade', 'give_resources', 'fetch_resources', 'offer_resources', 'update_trade_offer', 'cancel_trade',
-'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps', 'set_buff_targets'
+'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps', 'set_buff_targets', 'cancel_shopping'
     ]);
     const economyActions = new Set([
         'quote_item', 'counter_offer', 'accept_price', 'decline_price', 'open_negotiated_trade'
@@ -1629,7 +1670,8 @@ function registerTools() {
         give_adena: giveAdena,
         go_to: goTo,
         plan_steps: planSteps,
-        set_buff_targets: setBuffTargets
+        set_buff_targets: setBuffTargets,
+        cancel_shopping: cancelShopping
     };
 
     ACTIONS.forEach((name) => {

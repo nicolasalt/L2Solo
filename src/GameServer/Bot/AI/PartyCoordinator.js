@@ -17,7 +17,7 @@ const PLAN_ACTIONS = [
     'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule',
     'set_buff_targets', 'set_buff_policy', 'set_combat_stance', 'override_rule',
     'set_pull_policy', 'stop_pulling_and_return', 'assign_puller', 'unassign_puller',
-    'buy_for_self', 'fetch_resources', 'upgrade_gear', 'optimize_equipment', 'equip_candidate', 'list_safe_loadouts',
+    'buy_for_self', 'cancel_shopping', 'fetch_resources', 'upgrade_gear', 'optimize_equipment', 'equip_candidate', 'list_safe_loadouts',
     'give_adena', 'give_resources', 'go_to'
 ];
 
@@ -187,6 +187,7 @@ function planSystemPrompt() {
         'needsConfirmation: one short question, only when the order is risky (a pull likely to wipe the party, spending nearly all of a companion\'s Adena). Then the steps are kept and run when the leader agrees: set runPendingSteps true on the leader\'s confirming message.',
         'Hard limits the server enforces: death, unlearned skills, missing Adena, unreachable targets, and the C4 raid curse (more than 8 levels above a raid boss: those companions cannot fight it). The leader\'s orders override every other caution.',
         'args holds that tool\'s fields from toolArguments, filled in: e.g. set_skill_rule {"skillRule":"recharge_below","ruleValue":50}; buy_for_self {"items":[{"itemName":"Tunic of Devotion","amount":1},{"itemName":"Cursed Bone","amount":1000}]} (one step per companion with its whole shopping list; amounts are what to buy, so subtract what its bag already holds when the leader says "to have at least N"); set_buff_targets {"skillName":"Holy Weapon","buffTargetMode":"never_on","buffTargetNames":["me"]}; attack_target {}. Turn the leader\'s words into values yourself ("half" is 50).',
+        'Do only what the leader asked: "best weapon" is upgrade_gear with slots ["weapon"]; never add upgrades, items or slots the leader did not ask for, and never replace gear the leader just ordered.',
         'If repair is present, some steps were refused: fix their args or pick another companion or tool, and return only the steps still to run (none if nothing can be fixed). Steps that succeeded already ran; never repeat them.',
         'Return only the JSON object.'
     ].join(' ');
