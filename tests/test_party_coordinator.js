@@ -39,7 +39,7 @@ let narrationReply = null;
 const told = [];
 const originals = {
     sessions: BotManager.sessions, tell: BotManager.botTell, request: Gateway.request, isEnabled: BotBrain.isEnabled,
-    errand: SupplyErrand.request, resolve: Resolver.resolveSupplyItem, ai: options.default.AI, template: SupplyErrand.itemTemplate
+    errand: SupplyErrand.requestList, resolve: Resolver.resolveSupplyItem, ai: options.default.AI, template: SupplyErrand.itemTemplate
 };
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -57,8 +57,9 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         };
         SupplyErrand.itemTemplate = (selfId) => (Number(selfId) === 2508 ? { template: { name: 'Cursed Bone' } } : null);
         Resolver.resolveSupplyItem = () => ({ selfId: 2508, name: 'Cursed Bone', reason: null, alternatives: [] });
-        SupplyErrand.request = (session, leaderSession, selfId, amount, opts) => ({ ok: true, itemSelfId: selfId,
-            itemName: 'Cursed Bone', amount, cost: amount * 360, town: 'Giran', forSelf: opts.forSelf });
+        SupplyErrand.requestList = (session, leaderSession, items) => ({ ok: true, reason: 'supply_errand_started', town: 'Giran',
+            cost: items[0].amount * 360, lines: [{ name: 'Cursed Bone', amount: items[0].amount, cost: items[0].amount * 360 }],
+            queued: [], unaffordable: [], refused: [] });
 
         assert.strictEqual(PartyCoordinator.enabled(), true);
 
@@ -98,9 +99,10 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         // A risky order waits for one confirmation, then runs.
         told.length = 0;
         let executed = 0;
-        SupplyErrand.request = (session, leaderSession, selfId, amount) => {
+        SupplyErrand.requestList = (session, leaderSession, items) => {
             executed += 1;
-            return { ok: true, itemSelfId: selfId, itemName: 'Cursed Bone', amount, cost: 49000, town: 'Giran' };
+            return { ok: true, reason: 'supply_errand_started', town: 'Giran', cost: 49000,
+                lines: [{ name: 'Cursed Bone', amount: items[0].amount, cost: 49000 }], queued: [], unaffordable: [], refused: [] };
         };
         planReply = () => ({ ok: true, data: { steps: [{ bot: 'Yaman', action: 'buy_for_self', args: { itemName: 'cursed bones', amount: 136 } }],
             speakers: ['Yaman'], needsConfirmation: 'That is almost all my Adena. Sure?' } });
@@ -153,7 +155,7 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         BotManager.botTell = originals.tell;
         Gateway.request = originals.request;
         BotBrain.isEnabled = originals.isEnabled;
-        SupplyErrand.request = originals.errand;
+        SupplyErrand.requestList = originals.errand;
         Resolver.resolveSupplyItem = originals.resolve;
         SupplyErrand.itemTemplate = originals.template;
         options.default.AI = originals.ai;

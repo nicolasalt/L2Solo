@@ -1150,35 +1150,59 @@ function overrideRule(context) {
     };
 }
 
+function listText(names) {
+    return names.filter(Boolean).join(', ');
+}
+
+// One bot's shopping list: every item it was told to buy for itself.
 function buyForOne(context) {
     const session = context.session;
     const leader = partyLeaderFor(session);
-    const resolved = nameResolver().resolveSupplyItem(context.decision.itemName || context.decision.supplyItemName,
-        context.decision.supplyItemId);
-    if (!resolved.selfId) {
-        return { applied: false, reason: resolved.reason, alternatives: resolved.alternatives,
-            requested: String(context.decision.itemName || '').slice(0, 64) };
+    const decision = context.decision;
+    const requested = Array.isArray(decision.items) && decision.items.length
+        ? decision.items
+        : [{ itemName: decision.itemName || decision.supplyItemName, amount: decision.amount || decision.supplyAmount, selfId: decision.supplyItemId }];
+    const resolved = [];
+    const unknown = [];
+    for (const entry of requested.slice(0, 20)) {
+        const name = String(entry?.itemName || entry?.name || '').trim();
+        const found = nameResolver().resolveSupplyItem(name, entry?.selfId);
+        if (!found.selfId) { unknown.push(name || 'an item'); continue; }
+        resolved.push({ selfId: found.selfId, amount: Math.floor(Number(entry?.amount || 1)), name: found.name || name });
     }
-    const amount = Math.floor(Number(context.decision.amount || context.decision.supplyAmount || 1));
+    if (!resolved.length) {
+        return { applied: false, reason: 'unsupported_supply_item', requested: listText(unknown).slice(0, 64) };
+    }
     const SupplyErrand = invoke('GameServer/Bot/AI/BotSupplyErrand');
-    let result = SupplyErrand.request(session, leader, resolved.selfId, amount, { forSelf: true });
-    if (result.reason === 'supply_errand_active') result = SupplyErrand.amend(session, resolved.selfId, amount, { forSelf: true });
-    if (!result.ok) return { applied: false, ...result, reason: result.reason };
-    if (result.reason === 'supply_errand_amended') {
-        return { applied: true, outcome: 'pending', reason: result.reason, itemName: result.itemName, amount: result.amount, cost: result.cost,
-            town: result.town, playerVisibleReply: `Changed it to ${result.amount} ${result.itemName} (${Number(result.cost).toLocaleString('en-US')} Adena).` };
+    // "20 only? get 40": the same single item again resizes the trip under way.
+    if (resolved.length === 1 && session.companionShopping && !session.companionShopping.lines?.length) {
+        const amended = SupplyErrand.amend(session, resolved[0].selfId, resolved[0].amount, { forSelf: true });
+        if (amended.ok) {
+            return { applied: true, outcome: 'pending', reason: amended.reason, itemName: amended.itemName, amount: amended.amount,
+                cost: amended.cost, playerVisibleReply: `Changed it to ${amended.amount} ${amended.itemName} (${Number(amended.cost).toLocaleString('en-US')} Adena).` };
+        }
     }
+    const result = SupplyErrand.requestList(session, leader, resolved, { forSelf: true });
+    if (!result.ok) return { applied: false, ...result, reason: result.reason };
+    const parts = [];
+    if (result.reason === 'supply_queued') parts.push(`Added to my shopping list: ${listText(result.queued)}.`);
+    else {
+        parts.push(`Going to ${result.town} for ${listText(result.lines.map((line) => `${line.amount} ${line.name}`))} (${Number(result.cost).toLocaleString('en-US')} Adena).`);
+        if (result.queued?.length) parts.push(`Next trip: ${listText(result.queued)}.`);
+        if (result.unaffordable?.length) parts.push(`Can't afford: ${listText(result.unaffordable)}.`);
+    }
+    const notSold = [...unknown, ...(result.refused || []).map((entry) => entry.name)];
+    if (notSold.length) parts.push(`No shop sells: ${listText(notSold)}.`);
     return {
         applied: true,
         outcome: 'pending',
-        reason: 'self_purchase_started',
+        reason: result.reason === 'supply_queued' ? 'supply_queued' : 'self_purchase_started',
         effect: 'travel_purchase_and_return_pending',
-        itemSelfId: result.itemSelfId,
-        itemName: result.itemName,
-        amount: result.amount,
-        cost: result.cost,
         town: result.town,
-        playerVisibleReply: `Going to ${result.town} to buy ${result.amount} ${result.itemName} for ${Number(result.cost).toLocaleString('en-US')} Adena. Back soon.`
+        cost: result.cost,
+        lines: result.lines,
+        queued: result.queued,
+        playerVisibleReply: parts.join(' ')
     };
 }
 
@@ -1204,7 +1228,8 @@ function upgradeGearForOne(context) {
     } catch (_) { errand = null; }
     if (errand?.pending) return { applied: false, reason: 'gear_plan_pending' };
     if (!errand?.itemId) return { applied: false, reason: 'no_affordable_upgrade' };
-    const result = invoke('GameServer/Bot/AI/BotSupplyErrand').request(session, partyLeaderFor(session), errand.itemId, 1, { forSelf: true });
+    const result = invoke('GameServer/Bot/AI/BotSupplyErrand').requestList(session, partyLeaderFor(session),
+        [{ selfId: errand.itemId, amount: 1, name: errand.itemName }], { forSelf: true });
     if (!result.ok) {
         return { applied: false, ...result, reason: result.reason, itemName: errand.itemName,
             cost: result.cost || errand.price };
@@ -1213,10 +1238,12 @@ function upgradeGearForOne(context) {
         applied: true,
         outcome: 'pending',
         reason: 'gear_upgrade_started',
-        itemName: result.itemName,
+        itemName: errand.itemName,
         cost: result.cost,
         town: result.town,
-        playerVisibleReply: `Next upgrade is ${result.itemName} for ${Number(result.cost).toLocaleString('en-US')} Adena. Going to ${result.town} to buy it.`
+        playerVisibleReply: result.reason === 'supply_queued'
+            ? `Next upgrade is ${errand.itemName}; it's on my shopping list after the current trip.`
+            : `Next upgrade is ${errand.itemName} for ${Number(result.cost).toLocaleString('en-US')} Adena. Going to ${result.town} to buy it.`
     };
 }
 
@@ -1351,8 +1378,7 @@ function forEachNamedMember(context, runOne, describe) {
 }
 
 function buyForSelf(context) {
-    return forEachNamedMember(context, buyForOne, (result) =>
-        `going to ${result.town} for ${result.amount} ${result.itemName} (${Number(result.cost).toLocaleString('en-US')} Adena).`);
+    return forEachNamedMember(context, buyForOne, (result) => result.playerVisibleReply);
 }
 
 function upgradeGear(context) {
@@ -1540,7 +1566,7 @@ function registerTools() {
         clear_skill_preferences: 'Clear prefer/avoid orders for skillNames, or for every skill when skillNames is empty.',
         set_skill_rule: 'Set a rotation rule: skillRule no_debuffs | allow_debuffs | recharge_below (ruleValue = MP percent; healers Recharge anyone below it, in combat too) | no_recharge_rule | clear.',
         override_rule: 'Override a built-in caution rule for the party (scope=self for this bot): overrideName ignore_level_limits | engage_raid | no_retreat | spend_all_mp, overrideEnabled true/false. The raid curse, death and missing skills stay hard limits.',
-        buy_for_self: 'Go to the shop that sells itemName (shots, potions, scrolls, reagents, gear), buy amount with the buyer\'s own Adena, keep it and come back. forMembers names who buys (names, classes like "necromancers", roles like "mages", or "everyone"); empty = this bot.',
+        buy_for_self: 'items: the whole shopping list [{itemName, amount}] (or itemName + amount for one item). Go to the shop that sells it (shots, potions, scrolls, reagents, gear), buy amount with the buyer\'s own Adena, keep it and come back. forMembers names who buys (names, classes like "necromancers", roles like "mages", or "everyone"); empty = this bot.',
         upgrade_gear: 'Equip any better gear in the bag; otherwise pick the next affordable upgrade from the gear plan, go buy it and come back. forMembers as for buy_for_self.',
         give_adena: 'Open a trade giving the leader adenaAmount Adena ("all" for everything but a 1,000 travel reserve). No cap.',
         go_to: 'Walk to the NPC or player named destinationName (within about 12,000 units) and wait there until called back.',

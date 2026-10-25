@@ -735,6 +735,30 @@ module.exports = {
             return;
         }
 
+        if (companionErrand?.kind === 'player_resource_purchase' && companionErrand.lines?.length) {
+            // A shopping-list trip the leader ordered: buy every line, keep it all.
+            companionErrand.purchaseStarted = true;
+            const BotSupplyErrand = invoke('GameServer/Bot/AI/BotSupplyErrand');
+            let outcome = { bought: [], failed: [] };
+            try {
+                outcome = await BotSupplyErrand.purchaseLines(bot, companionErrand);
+            } catch (error) {
+                outcome.failed.push({ name: companionErrand.itemName, reason: error.message });
+            }
+            try { invoke('GameServer/Bot/AI/BotEquipmentUpgrade').applyBestUpgrades(session); } catch (_) { /* nothing to equip */ }
+            const leader = companionErrand.playerSession;
+            const boughtText = outcome.bought.map((line) => `${line.amount} ${line.name}`).join(', ');
+            const failedText = outcome.failed.map((line) => `${line.name} (${line.reason})`).join(', ');
+            const summary = [
+                boughtText ? `Bought ${boughtText} for ${formatAdena(outcome.bought.reduce((sum, line) => sum + line.cost, 0))} Adena.` : '',
+                failedText ? `Couldn't buy ${failedText}.` : ''
+            ].filter(Boolean).join(' ');
+            session.lastTradeSummary = summary;
+            if (leader?.actor && summary) invoke('GameServer/Bot/BotManager').botTell(session, leader, summary);
+            this.scheduleResourceReturn(session, bot, BotAI, { deliveryReady: outcome.bought.length > 0, forSelf: true });
+            return;
+        }
+
         if (companionErrand?.kind === 'player_resource_purchase') {
             let deliveryReady = false;
             try {

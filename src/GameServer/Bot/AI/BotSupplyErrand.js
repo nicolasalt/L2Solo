@@ -67,13 +67,20 @@ function request(session, playerSession, itemSelfId, requestedAmount, options = 
         return { ok: false, reason: 'supply_errand_active' };
     }
 
-    const Market = MarketOpportunity.bestSupplyOffer(selfId, {
+    const offerOptions = {
         amount,
         buyerCharacterId: bot.fetchId(),
         state: { ...session.coldLifeState, characterId: bot.fetchId(), level: bot.fetchLevel?.() || session.coldLifeState?.level || 1,
             loc: { locX: bot.fetchLocX(), locY: bot.fetchLocY(), locZ: bot.fetchLocZ() } },
         origin: { locX: bot.fetchLocX(), locY: bot.fetchLocY() }
-    });
+    };
+    // The leader's order is paid from the wallet, not the bot's own budget:
+    // an NPC shop first (no stall bookkeeping), a player or bot stall only
+    // when no NPC sells the item.
+    const Market = MarketOpportunity.bestSupplyOffer(selfId, {
+        ...offerOptions,
+        accept: (offer) => ['npc', 'configured_store'].includes(offer.sourceType)
+    }) || MarketOpportunity.bestSupplyOffer(selfId, offerOptions);
     if (!Market) return { ok: false, reason: 'supply_not_available' };
 
     const template = itemTemplate(selfId);
@@ -151,6 +158,7 @@ function request(session, playerSession, itemSelfId, requestedAmount, options = 
             preserveShoppingTarget: true,
             destinationTown: town,
             forceScrollOfEscape: true,
+            leaderOrder: true,
             announce: false,
             onArrival: () => {
                 session.supplyErrandPhase = 'shopping';
@@ -205,6 +213,233 @@ function request(session, playerSession, itemSelfId, requestedAmount, options = 
         forSelf: options.forSelf === true,
         travel
     };
+}
+
+// ---- Shopping lists: the leader's order for several items, bought for the
+// bot itself. One trip buys everything one town sells; the rest waits in
+// session.supplyQueue for the next trip.
+
+function bestOffer(session, bot, selfId, amount) {
+    const options = {
+        amount,
+        buyerCharacterId: bot.fetchId(),
+        state: { ...session.coldLifeState, characterId: bot.fetchId(), level: bot.fetchLevel?.() || session.coldLifeState?.level || 1,
+            loc: { locX: bot.fetchLocX(), locY: bot.fetchLocY(), locZ: bot.fetchLocZ() } },
+        origin: { locX: bot.fetchLocX(), locY: bot.fetchLocY() }
+    };
+    return MarketOpportunity.bestSupplyOffer(selfId, { ...options, accept: (offer) => ['npc', 'configured_store'].includes(offer.sourceType) })
+        || MarketOpportunity.bestSupplyOffer(selfId, options);
+}
+
+function queueItems(session, items) {
+    const queue = session.supplyQueue || (session.supplyQueue = []);
+    items.forEach((item) => {
+        const queued = queue.find((entry) => Number(entry.selfId) === Number(item.selfId));
+        if (queued) queued.amount = item.amount;
+        else queue.push({ selfId: Number(item.selfId), amount: item.amount, name: item.name || null });
+    });
+}
+
+// items: [{ selfId, amount, name? }]
+function requestList(session, playerSession, items = [], options = {}) {
+    const bot = session?.actor;
+    const player = playerSession?.actor;
+    if (!bot || !player || session.partyCompanion !== true || session.followPlayerSession !== playerSession) {
+        return { ok: false, reason: 'not_a_party_companion' };
+    }
+    const wanted = [];
+    const refused = [];
+    for (const item of items) {
+        const selfId = Number(item.selfId || 0);
+        const template = itemTemplate(selfId);
+        let amount = Math.floor(Number(item.amount || 1));
+        const name = template?.template?.name || item.name || `item ${selfId}`;
+        if (!template) { refused.push({ name, reason: 'unsupported_supply_item' }); continue; }
+        if (amount < 1 || amount > MAX_REQUEST_AMOUNT) { refused.push({ name, reason: 'invalid_supply_amount' }); continue; }
+        if (template.etc?.stackable !== true) amount = 1;
+        wanted.push({ selfId, amount, name });
+    }
+    if (!wanted.length) return { ok: false, reason: refused[0]?.reason || 'unsupported_supply_item', refused };
+    if (session.companionShopping || session.pendingResourceDelivery || session.activeTrade) {
+        queueItems(session, wanted);
+        return { ok: true, outcome: 'pending', reason: 'supply_queued', queued: wanted.map((item) => item.name), refused };
+    }
+
+    // The town that sells the most of the list is this trip's destination.
+    const offers = wanted.map((item) => ({ item, offer: bestOffer(session, bot, item.selfId, item.amount) }));
+    refused.push(...offers.filter((entry) => !entry.offer).map((entry) => ({ name: entry.item.name, reason: 'supply_not_available' })));
+    const available = offers.filter((entry) => entry.offer);
+    if (!available.length) return { ok: false, reason: 'supply_not_available', refused };
+    const byTown = new Map();
+    available.forEach((entry) => {
+        const town = entry.offer.town || '';
+        if (!byTown.has(town)) byTown.set(town, []);
+        byTown.get(town).push(entry);
+    });
+    // Towns in order of how much of the list they sell; the first with
+    // something affordable is this trip, the others wait for later trips.
+    const towns = [...byTown.entries()].sort((a, b) => b[1].length - a[1].length);
+    let townName = null;
+    let here = [];
+    let lines = [];
+    let short = [];
+    for (const [candidate, entries] of towns) {
+        let adena = actorAdena(bot);
+        const candidateLines = [];
+        const candidateShort = [];
+        for (const { item, offer } of entries) {
+            const cost = Number(offer.price) * item.amount;
+            if (!(cost > 0)) continue;
+            if (cost > adena) { candidateShort.push({ name: item.name, cost }); continue; }
+            adena -= cost;
+            candidateLines.push({
+                itemId: item.selfId, itemName: offer.itemName || item.name, amount: item.amount,
+                unitPrice: Number(offer.price), totalCost: cost, sourceType: offer.sourceType, sourceId: offer.sourceId,
+                sourceName: offer.sourceName, recordId: offer.recordId, lineId: offer.lineId, offer
+            });
+        }
+        short.push(...candidateShort);
+        if (candidateLines.length) {
+            townName = candidate;
+            here = entries;
+            lines = candidateLines;
+            break;
+        }
+    }
+    const shortNames = new Set(short.map((entry) => entry.name));
+    const later = available.filter((entry) => !here.includes(entry) && !shortNames.has(entry.item.name));
+    if (!lines.length) {
+        return { ok: false, reason: 'not_enough_adena', cost: short[0]?.cost || 0, adena: actorAdena(bot), itemName: short[0]?.name, refused };
+    }
+    const BotAI = invoke('GameServer/Bot/BotAI');
+    const first = lines[0];
+    const town = townDestination(first.offer, bot, BotAI);
+    if (!town) return { ok: false, reason: 'supply_destination_missing', refused };
+    const TownTravel = invoke('GameServer/Bot/AI/BotTownTravel');
+    if (TownTravel.inCombat(session, bot)) {
+        queueItems(session, wanted);
+        return { ok: true, outcome: 'pending', reason: 'supply_queued', queued: wanted.map((item) => item.name), refused };
+    }
+    queueItems(session, later.map((entry) => entry.item));
+
+    session.resumeAfterShopping = { plan: 'following', followPlayerSession: playerSession, partyCompanion: true, botStay: false, stayLocation: null };
+    const startedAt = Date.now();
+    const totalCost = lines.reduce((sum, line) => sum + line.totalCost, 0);
+    session.companionShopping = {
+        kind: 'player_resource_purchase',
+        forSelf: true,
+        playerSession,
+        playerId: player.fetchId(),
+        itemId: first.itemId,
+        itemName: lines.map((line) => line.itemName).join(', '),
+        amount: first.amount,
+        unitPrice: first.unitPrice,
+        totalCost,
+        sourceType: first.sourceType,
+        sourceId: first.sourceId,
+        sourceName: first.sourceName,
+        recordId: first.recordId,
+        lineId: first.lineId,
+        lines: lines.map(({ offer, ...line }) => line),
+        workflowId: `supply-${bot.fetchId()}-${player.fetchId()}-${startedAt}-${Math.random().toString(36).slice(2, 8)}`,
+        startedAt,
+        expiresAt: startedAt + 10 * 60 * 1000,
+        target: MarketOpportunity.offerTarget({ ...first.offer,
+            locX: first.offer.locX ?? town.x, locY: first.offer.locY ?? town.y, locZ: first.offer.locZ ?? town.z }, town.name)
+    };
+    session.shoppingTarget = session.companionShopping.target;
+    session.shoppingDoneAnnounced = false;
+    session.currentTargetId = undefined;
+    session.botStay = false;
+    bot.unselect?.();
+    bot.automation?.abortAll?.(bot);
+    hideForSupply(session, bot);
+    const travel = TownTravel.request(session, bot, BotAI, null, {
+        allowCompanion: true,
+        preserveShoppingTarget: true,
+        destinationTown: town,
+        forceScrollOfEscape: true,
+        leaderOrder: true,
+        announce: false,
+        onArrival: () => {
+            session.supplyErrandPhase = 'shopping';
+            BotAI.init?.(session);
+            BotAI.wakeup?.(session, { urgent: true });
+        }
+    });
+    if (travel === 'deferred' || travel === 'unpaid') {
+        TownTravel.clearCombatTrip(session);
+        session.companionShopping = undefined;
+        session.shoppingTarget = undefined;
+        session.resumeAfterShopping = undefined;
+        session.supplyErrandHidden = false;
+        session.dataSendToOthers?.(ServerResponse.charInfo(bot), bot);
+        session.dataSendToOthers?.(ServerResponse.relationChanged(bot), bot);
+        queueItems(session, wanted);
+        return { ok: true, outcome: 'pending', reason: 'supply_queued', queued: wanted.map((item) => item.name), refused };
+    }
+    if (travel === 'escape') {
+        session.supplyErrandPhase = 'cold';
+        BotAI.stop?.(session);
+        const workflowId = session.companionShopping.workflowId;
+        Promise.resolve().then(() => LifeState.markCold(session, 'supply_errand')).then((state) => {
+            if (state && session.companionShopping?.workflowId === workflowId) {
+                session.coldLifeState = state;
+                refreshPartyMemberships([session], invoke);
+            }
+        }).catch(() => {});
+    }
+    return {
+        ok: true,
+        outcome: 'pending',
+        reason: 'supply_errand_started',
+        town: town.name || townName,
+        cost: totalCost,
+        lines: lines.map((line) => ({ name: line.itemName, amount: line.amount, cost: line.totalCost })),
+        queued: later.map((entry) => entry.item.name),
+        unaffordable: short.map((entry) => entry.name),
+        refused,
+        forSelf: true
+    };
+}
+
+// Buys every line of a shopping-list trip; a line that fails does not stop the others.
+async function purchaseLines(bot, errand) {
+    const bought = [];
+    const failed = [];
+    for (const line of errand.lines || []) {
+        try {
+            const result = await purchaseAtDestination(bot, { ...errand, ...line, lines: undefined, meetingToken: line.meetingToken });
+            if (result.pending) { failed.push({ name: line.itemName, reason: 'stall_owner_away' }); continue; }
+            if (!result.ok) { failed.push({ name: line.itemName, reason: result.reason }); continue; }
+            bought.push({ name: line.itemName, amount: Number(result.delta), cost: Number(result.cost) });
+        } catch (error) {
+            failed.push({ name: line.itemName, reason: String(error?.message || error) });
+        }
+    }
+    return { bought, failed };
+}
+
+// Starts the next queued shopping trip once the bot is back and idle.
+function continueQueue(session, now = Date.now()) {
+    if (!session?.supplyQueue?.length || Number(session.supplyQueueRetryAt || 0) > now) return false;
+    if (session.companionShopping || session.pendingResourceDelivery || session.activeTrade || session.supplyErrandPhase) return false;
+    const leader = session.followPlayerSession;
+    if (session.partyCompanion !== true || !leader?.actor) {
+        delete session.supplyQueue;
+        return false;
+    }
+    const items = session.supplyQueue;
+    session.supplyQueue = [];
+    const result = requestList(session, leader, items, { forSelf: true });
+    if (!result.ok) {
+        delete session.supplyQueue;
+        invoke('GameServer/Bot/BotManager').botTell(session, leader,
+            `Couldn't continue the shopping list: ${invoke('GameServer/Bot/AI/BotAgentTools').rejectionReply(result)}`);
+        return false;
+    }
+    if (result.reason === 'supply_queued') session.supplyQueueRetryAt = now + 15000;
+    return true;
 }
 
 // A second order for the item already being fetched changes the amount
@@ -301,7 +536,8 @@ async function purchaseAtDestination(bot, errand) {
         const trade = boardSource
             ? await invoke('GameServer/AfkTrade/AfkTradeService').buyFromShop(bot.fetchId(), boardOffer.store,
                 Number(errand.itemId), Number(errand.amount), { lineId: boardOffer.lineId,
-                    expectedPrice: Number(errand.unitPrice), coldState: bot.session?.coldLifeState, autoEquip: false })
+                    expectedPrice: Number(errand.unitPrice), coldState: bot.session?.coldLifeState, autoEquip: false,
+                    funding: { leaderOrder: true } })
             : await TradeService.buyFromStore(bot, store, Number(errand.itemId), Number(errand.amount), {
                 expectedUnitPrice: Number(errand.unitPrice)
             });
@@ -351,7 +587,10 @@ module.exports = {
     MAX_REQUEST_AMOUNT,
     actorAdena,
     amend,
+    continueQueue,
     itemTemplate,
+    purchaseLines,
+    requestList,
     ownsCompanion,
     purchaseAtDestination,
     request

@@ -80,7 +80,9 @@ async function noSpend(state, itemId, message) {
 
 (async () => {
     Data.init();
-    const npc = [1, 2, 3, 4, 5, 6, 7, 10, 14, 34, 40, 110, 2508]
+    // Cursed Bone (2508) is now on every magic shop's list; it is a material the
+    // planner rightly will not travel for one of, so it is not a fixture candidate.
+    const npc = [1, 2, 3, 4, 5, 6, 7, 10, 14, 34, 40, 110]
         .flatMap(itemId => Offers.npcOffers(itemId, 'Giran'))
         .filter(row => row.price > 0 && row.price < WALLET).sort((left, right) => left.price - right.price)[0];
     assert(npc, 'the fixture uses an actual C4 Giran NPC quote');

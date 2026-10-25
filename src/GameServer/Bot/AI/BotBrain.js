@@ -271,6 +271,12 @@ function schema(allowedActions = BotAgentTools.ACTIONS, session = null) {
                 maxItems: 9,
                 description: 'set_buff_targets: party member names; "me" is the leader.'
             },
+            items: {
+                type: 'array',
+                maxItems: 20,
+                items: { type: 'object', properties: { itemName: { type: 'string' }, amount: { type: 'number' } } },
+                description: 'buy_for_self: the whole shopping list, [{itemName, amount}]. One trip buys what one town sells; the rest follows.'
+            },
             forMembers: {
                 type: 'array',
                 items: { type: 'string' },

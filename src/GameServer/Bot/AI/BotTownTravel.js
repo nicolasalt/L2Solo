@@ -188,8 +188,9 @@ function request(session, bot, BotAI, reason, options = {}) {
         ? TripPayment.fee({ locX: bot.fetchLocX(), locY: bot.fetchLocY(), locZ: bot.fetchLocZ() },
             { locX: town.x, locY: town.y, locZ: town.z }) ?? 0
         : 0 };
-    const affordable = wantsScroll && TripPayment.hasActorScroll(bot) && !TripPayment.fareShort(
-        options.forceScrollOfEscape === true ? 'hot_errand' : 'hot', fare.fee, TripPayment.actorAdena(bot));
+    // A trip the party leader ordered costs the bot no scroll and no fare.
+    const affordable = wantsScroll && (options.leaderOrder === true || TripPayment.hasActorScroll(bot) && !TripPayment.fareShort(
+        options.forceScrollOfEscape === true ? 'hot_errand' : 'hot', fare.fee, TripPayment.actorAdena(bot)));
     if (wantsScroll && !affordable && options.forceScrollOfEscape === true) return 'unpaid';
     const usesScroll = wantsScroll && affordable;
     session.preShopLocation = { locX: bot.fetchLocX(), locY: bot.fetchLocY(), locZ: bot.fetchLocZ() };
@@ -203,7 +204,7 @@ function request(session, bot, BotAI, reason, options = {}) {
     session.pendingTownTrip = undefined;
 
     if (usesScroll) {
-        TripPayment.payActor(session, bot, fare);
+        if (options.leaderOrder !== true) TripPayment.payActor(session, bot, fare);
         beginEscape(session, bot, town, options);
         return 'escape';
     }

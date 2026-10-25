@@ -163,19 +163,21 @@ try {
     // "necromancers, buy cursed bones": whoever is addressed, the named members buy.
     const SupplyErrand = invoke('GameServer/Bot/AI/BotSupplyErrand');
     const Resolver = invoke('GameServer/Bot/AI/BotNameResolver');
-    const originalRequest = SupplyErrand.request;
+    const originalRequest = SupplyErrand.requestList;
     const originalResolve = Resolver.resolveSupplyItem;
     const buyers = [];
     try {
         Resolver.resolveSupplyItem = () => ({ selfId: 2508, name: 'Cursed Bone', reason: null, alternatives: [] });
-        SupplyErrand.request = (session, leaderSession, selfId, amount, options) => {
+        SupplyErrand.requestList = (session, leaderSession, items, options) => {
+            const [{ selfId, amount }] = items;
             buyers.push([session.actor.fetchName(), selfId, amount, options.forSelf]);
-            return { ok: true, itemSelfId: selfId, itemName: 'Cursed Bone', amount, cost: amount * 360, town: 'Giran' };
+            return { ok: true, reason: 'supply_errand_started', town: 'Giran', cost: amount * 360,
+                lines: [{ name: 'Cursed Bone', amount, cost: amount * 360 }], queued: [], unaffordable: [], refused: [] };
         };
         const named = BotAgentTools.execute(bot, decision('buy_for_self', { itemName: 'cursed bones', amount: 20, forMembers: ['Caster'] }), [], ctx());
         assert.strictEqual(named.applied, true, named.reason);
         assert.deepStrictEqual(buyers, [['Caster', 2508, 20, true]]);
-        assert.strictEqual(named.playerVisibleReply, 'Caster: going to Giran for 20 Cursed Bone (7,200 Adena).');
+        assert.strictEqual(named.playerVisibleReply, 'Caster: Going to Giran for 20 Cursed Bone (7,200 Adena).');
         buyers.length = 0;
         const everyone = BotAgentTools.execute(bot, decision('buy_for_self', { itemName: 'cursed bones', amount: 5, forMembers: ['everyone'] }), [], ctx());
         assert.strictEqual(everyone.applied, true);
@@ -183,7 +185,7 @@ try {
         const nobody = BotAgentTools.execute(bot, decision('buy_for_self', { itemName: 'cursed bones', amount: 5, forMembers: ['Gladiators'] }), [], ctx());
         assert.strictEqual(nobody.reason, 'no_matching_members');
     } finally {
-        SupplyErrand.request = originalRequest;
+        SupplyErrand.requestList = originalRequest;
         Resolver.resolveSupplyItem = originalResolve;
     }
 

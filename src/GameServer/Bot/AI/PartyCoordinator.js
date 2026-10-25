@@ -4,7 +4,7 @@
 // model reads the leader's words; the server decides what is possible.
 // See the "LLM Coordinator Plan" doc.
 
-const MAX_STEPS = 12;
+const MAX_STEPS = 40;
 const LOG_LIMIT = 12;
 const REPLY_GAP_MS = 700;
 const PENDING_TTL_MS = 3 * 60 * 1000;
@@ -186,7 +186,7 @@ function planSystemPrompt() {
         'A question or chat needs no steps, only speakers.',
         'needsConfirmation: one short question, only when the order is risky (a pull likely to wipe the party, spending nearly all of a companion\'s Adena). Then the steps are kept and run when the leader agrees: set runPendingSteps true on the leader\'s confirming message.',
         'Hard limits the server enforces: death, unlearned skills, missing Adena, unreachable targets, and the C4 raid curse (more than 8 levels above a raid boss: those companions cannot fight it). The leader\'s orders override every other caution.',
-        'args holds that tool\'s fields from toolArguments, filled in: e.g. set_skill_rule {"skillRule":"recharge_below","ruleValue":50}; buy_for_self {"itemName":"Cursed Bone","amount":40}; set_buff_targets {"skillName":"Holy Weapon","buffTargetMode":"never_on","buffTargetNames":["me"]}; attack_target {}. Turn the leader\'s words into values yourself ("half" is 50).',
+        'args holds that tool\'s fields from toolArguments, filled in: e.g. set_skill_rule {"skillRule":"recharge_below","ruleValue":50}; buy_for_self {"items":[{"itemName":"Tunic of Devotion","amount":1},{"itemName":"Cursed Bone","amount":1000}]} (one step per companion with its whole shopping list; amounts are what to buy, so subtract what its bag already holds when the leader says "to have at least N"); set_buff_targets {"skillName":"Holy Weapon","buffTargetMode":"never_on","buffTargetNames":["me"]}; attack_target {}. Turn the leader\'s words into values yourself ("half" is 50).',
         'If repair is present, some steps were refused: fix their args or pick another companion or tool, and return only the steps still to run (none if nothing can be fixed). Steps that succeeded already ran; never repeat them.',
         'Return only the JSON object.'
     ].join(' ');

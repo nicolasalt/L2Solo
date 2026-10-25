@@ -2262,6 +2262,9 @@ function equipColdPurchaseUnsafe(characterId, step, itemId, autoEquip, heldItemI
 
 function checkEconomyFundingUnsafe(characterId, step, amount, funding = {}, walletOverride = null, packetOverride = null) {
     if (!step) return;
+    // The party leader's order spends the wallet; the bot's own reserves do
+    // not apply (the wallet itself is still debited and checked).
+    if (funding?.leaderOrder === true) return;
     const stats = jsonObject(step.row.statsJson), packet = packetOverride || stats.money;
     if (!Array.isArray(packet) || packet.length < 4) throw Error('economy_funding_missing');
     const wallet = walletOverride === null ? Number(one('SELECT COALESCE(SUM(amount),0) amount FROM items WHERE characterId=? AND selfId=57', [characterId]).amount) : walletOverride;

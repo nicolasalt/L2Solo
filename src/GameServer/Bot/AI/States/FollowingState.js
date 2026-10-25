@@ -863,6 +863,7 @@ const FollowingState = {
         // the per-call ctx. A phase that returns true has ended the tick.
         const ctx = { session, bot, Generics, BotAI };
         if (session.taskQueue) invoke('GameServer/Bot/AI/BotTaskQueue').tick(session);
+        if (session.supplyQueue?.length) invoke('GameServer/Bot/AI/BotSupplyErrand').continueQueue(session);
         if (FollowingState.tickLeaderPresence(ctx)) return;
         if (FollowingState.tickLeaderRevival(ctx)) return;
         if (FollowingState.tickPartyContext(ctx)) return;
