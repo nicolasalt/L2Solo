@@ -260,6 +260,17 @@ function schema(allowedActions = BotAgentTools.ACTIONS, session = null) {
                 type: 'boolean',
                 description: 'override_rule: true turns the override on, false turns it off.'
             },
+            buffTargetMode: {
+                type: 'string',
+                enum: ['', 'never_on', 'everyone_except', 'only_on', 'clear'],
+                description: 'set_buff_targets: who gets the buff.'
+            },
+            buffTargetNames: {
+                type: 'array',
+                items: { type: 'string' },
+                maxItems: 9,
+                description: 'set_buff_targets: party member names; "me" is the leader.'
+            },
             itemName: {
                 type: 'string',
                 description: 'Item by name: for buy_for_self/fetch_resources a shop item ("D-grade spiritshot"), for give_resources/equip_candidate an item in bot.inventory.bag.'
@@ -393,7 +404,7 @@ function systemPrompt(session = null) {
     return [
         BotDialogueStyle,
         'The deterministic server code handles moment-to-moment combat, pathfinding, HP/MP and loot; your tools steer it.',
-        'The party leader commands this bot. Carry out the leader\'s request with the one tool that does it: attack_target, set_combat_mode, retreat_party, focus_heal, use_skill, prefer_skill, avoid_skill, set_skill_rule, override_rule, buy_for_self, upgrade_gear, give_adena, give_resources, go_to, plan_steps and the others listed. Persona colours the wording, never obedience: never argue with or refuse a reasonable order because of personality.',
+        'The party leader commands this bot. Carry out the leader\'s request with the one tool that does it: attack_target, set_combat_mode, retreat_party, focus_heal, use_skill, prefer_skill, avoid_skill, set_skill_rule, set_buff_targets, override_rule, buy_for_self, upgrade_gear, give_adena, give_resources, go_to, plan_steps and the others listed. Persona colours the wording, never obedience: never argue with or refuse a reasonable order because of personality.',
         'Refuse only what the server cannot do, and then say the concrete reason (not learned, not enough Adena and how much, too far, the raid curse). The server reports a rejected tool to the player itself.',
         'Honesty: a reply may claim an action only when that action is the tool you chose this turn. With action=say, never write "on it", "coming", "on my way", "buying", "casting", "attacking" or similar. If no tool does what was asked, say plainly that you cannot do that.',
         'Your kit: bot.skills.kit lists every learned active skill as [skillId, name, level, mpCost, reuseSeconds, kind] and bot.inventory.bag every bag item as [objectId, name, amount]; bot.equipment shows what you wear. Answer questions about your skills, weapons and items from these lists, and never call a listed skill or item missing.',
@@ -409,7 +420,8 @@ function systemPrompt(session = null) {
         'For a non-party follow request, say that you are on your way unless the authoritative distance is already near the player; never claim to be beside them before arrival.',
         'For buff_target, choose a visible player and request a server-priced buff quote; the server opens a payment trade for the player. Clanmates are buffed for free.',
         'For heal_target, choose a visible player and let the server validate class, learned skill, MP, range, and safety. Do not claim a completed heal in a plain chat reply.',
-        'When the player asks to stop, allow, or exclude one learned buff from the support rotation, use set_buff_policy with the exact effect/name from bot.skills.support.availableBuffs and mode deny, allow, or clear. Do not claim a rotation changed after a plain say.',
+        'When the player asks to stop or allow one learned buff for the whole party, use set_buff_policy with the exact effect/name from bot.skills.support.availableBuffs and mode deny, allow, or clear. When the request names members ("not on me", "on everybody except me", "only on the tank"), use set_buff_targets. Do not claim a rotation changed after a plain say.',
+        'The player speaks in ordinary language, not commands. Work out what they want and map it to the tool and fields that do it; never ask them to use particular words.',
         'Party pull, skill preference, stance, and equipment tools are temporary hot-session controls. They require the current human party leader; never invent authority.',
         'Pull permission, pull mode, and assigned puller are separate. Unassigning one puller returns to the existing automatic policy and does not globally disable pulling.',
         'When the player asks to stop pulling and return, prefer stop_pulling_and_return so both server mutations are applied as one bounded workflow.',

@@ -24,7 +24,8 @@ const SOFT_FRESHNESS_ACTIONS = new Set([
     'upgrade_gear',
     'give_adena',
     'go_to',
-    'plan_steps'
+    'plan_steps',
+    'set_buff_targets'
 ]);
 
 function text(value, max = 160) {
@@ -101,7 +102,7 @@ const PK_LOCKED_REGISTRY_ACTIONS = new Set([
     'list_safe_loadouts', 'equip_candidate', 'optimize_equipment', 'list_party_candidates',
     'propose_trade', 'give_resources', 'fetch_resources', 'offer_resources', 'update_trade_offer', 'cancel_trade',
     'quote_item', 'counter_offer', 'accept_price', 'decline_price', 'open_negotiated_trade',
-'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps'
+'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps', 'set_buff_targets'
 ]);
 
 function requiresFreshWorld(action) {

@@ -282,6 +282,13 @@ function planningEffects(target, planning = null) {
 function isUsefulForTarget(target, skill, provider = null, context = {}, planning = null) {
     const semantic = skill?.fetchSemantic?.() || {};
     if (!Intent.alive(target)) return false;
+    // The party leader's rule for this buff ("not on me", "everyone but me")
+    // decides before the role and class fit.
+    const leaderRule = provider?.session?.hotPolicyOverlay
+        ? HotBotPolicyOverlay.buffAllowedOn(provider.session, skill, target?.fetchId?.())
+        : null;
+    if (leaderRule === false) return false;
+    if (leaderRule === true && semantic.target !== 'party' && skill?.fetchTargetKind?.() !== 'party') return true;
     if (skill?.fetchTargetKind?.() === 'ally' && !partyAuraRecipients([], provider, skill, planning).includes(target)) return false;
     if (!situationalBuffUseful(semantic.effect, context)) return false;
     if (!BuffLoadout.useful(target,skill,context)) return false;

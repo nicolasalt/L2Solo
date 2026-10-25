@@ -16,6 +16,11 @@ const STANCES = new Set(['balanced', 'aggressive', 'defensive', 'ranged']);
 // Named switches a party leader can flip to override a built-in caution rule.
 const OVERRIDES = new Set(['ignore_level_limits', 'engage_raid', 'no_retreat', 'spend_all_mp']);
 const MAX_BLOCKED_SKILLS = 24;
+// Who one buff goes to: never_on (keep the normal choice, skip these),
+// everyone_except (every member who can take it, even off-role, but these),
+// only_on (these members only).
+const BUFF_TARGET_MODES = new Set(['never_on', 'everyone_except', 'only_on']);
+const MAX_BUFF_TARGET_RULES = 16;
 
 function now() {
     return Date.now();
@@ -51,6 +56,19 @@ function normalizeSkillRules(value) {
     const recharge = Number(value.rechargeBelow);
     if (Number.isFinite(recharge) && recharge > 0) rules.rechargeBelow = clamp(recharge, 0.05, 0.95);
     return rules;
+}
+
+function normalizeBuffTargets(value) {
+    if (!Array.isArray(value)) return [];
+    const bySkill = new Map();
+    value.forEach((rule) => {
+        const skillId = Number(rule?.skillId || 0);
+        if (!skillId || !BUFF_TARGET_MODES.has(rule.mode)) return;
+        const targetIds = [...new Set((rule.targetIds || []).map(Number))].filter((id) => id > 0).slice(0, 9);
+        if (rule.mode !== 'everyone_except' && targetIds.length === 0) return;
+        bySkill.set(skillId, { skillId, mode: rule.mode, targetIds });
+    });
+    return [...bySkill.values()].slice(0, MAX_BUFF_TARGET_RULES);
 }
 
 function partyCompanionService() {
@@ -162,6 +180,7 @@ function set(session, patch = {}, context = {}) {
         overrides: normalizeOverrides(patch.overrides ?? previous.overrides),
         blockedSkills: normalizeBlockedSkills(patch.blockedSkills ?? previous.blockedSkills),
         skillRules: normalizeSkillRules(patch.skillRules ?? previous.skillRules),
+        buffTargets: normalizeBuffTargets(patch.buffTargets ?? previous.buffTargets),
         skillPriorities: normalizePriorities(patch.skillPriorities ?? previous.skillPriorities),
         combatStance: normalizeStance(patch.combatStance ?? previous.combatStance),
         buffPolicy: normalizeBuffPolicy(patch.buffPolicy ?? previous.buffPolicy),
@@ -184,6 +203,7 @@ function set(session, patch = {}, context = {}) {
     if (patch.overrides === null) updated.overrides = [];
     if (patch.blockedSkills === null) updated.blockedSkills = [];
     if (patch.skillRules === null) updated.skillRules = {};
+    if (patch.buffTargets === null) updated.buffTargets = [];
 
     session.hotPolicyOverlay = updated;
     return { ...updated, skillPriorities: { ...updated.skillPriorities }, pull: updated.pull && { ...updated.pull } };
@@ -235,6 +255,23 @@ function skillBlocked(session, skill) {
     return semantic.effectType === 'debuff' && skill.fetchTargetKind?.() === 'enemy';
 }
 
+function buffTargetRule(session, skill) {
+    if (!session?.hotPolicyOverlay || !skill) return null;
+    const id = Number(skill.fetchSelfId?.());
+    return (get(session)?.buffTargets || []).find((rule) => rule.skillId === id) || null;
+}
+
+// true: the leader wants this buff on this member; false: not on this
+// member; null: no rule, the normal choice decides.
+function buffAllowedOn(session, skill, targetId) {
+    const rule = buffTargetRule(session, skill);
+    if (!rule) return null;
+    const listed = rule.targetIds.includes(Number(targetId));
+    if (rule.mode === 'only_on') return listed;
+    if (rule.mode === 'never_on') return listed ? false : null;
+    return !listed;
+}
+
 function skillRules(session) {
     return { ...(get(session)?.skillRules || {}) };
 }
@@ -259,7 +296,8 @@ function status(session) {
         skillPriorities: { ...(overlay.skillPriorities || {}) },
         overrides: [...(overlay.overrides || [])],
         blockedSkills: [...(overlay.blockedSkills || [])],
-        skillRules: { ...(overlay.skillRules || {}) }
+        skillRules: { ...(overlay.skillRules || {}) },
+        buffTargets: (overlay.buffTargets || []).map((rule) => ({ ...rule, targetIds: [...rule.targetIds] }))
     };
 }
 
@@ -267,6 +305,7 @@ module.exports = {
     DEFAULT_TTL_MS,
     MAX_SKILL_WEIGHT,
     MAX_BUFF_POLICIES,
+    BUFF_TARGET_MODES: [...BUFF_TARGET_MODES],
     OVERRIDES: [...OVERRIDES],
     STANCES: [...STANCES],
     clear,
@@ -275,6 +314,8 @@ module.exports = {
     clearForPartyDetach,
     combatPolicy,
     get,
+    buffAllowedOn,
+    buffTargetRule,
     hasOverride,
     skillBlocked,
     skillRules,

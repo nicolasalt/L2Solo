@@ -68,7 +68,8 @@ const ACTIONS = [
     'upgrade_gear',
     'give_adena',
     'go_to',
-    'plan_steps'
+    'plan_steps',
+    'set_buff_targets'
 ];
 const NON_MUTATING_ACTIONS = new Set(['none', 'say', 'list_safe_loadouts', 'list_party_candidates']);
 
@@ -80,7 +81,7 @@ const PK_LOCKED_ACTIONS = new Set([
     'list_safe_loadouts', 'equip_candidate', 'optimize_equipment', 'list_party_candidates', 'request_player_join_party',
     'propose_trade', 'give_resources', 'offer_resources', 'update_trade_offer', 'cancel_trade',
     'quote_item', 'counter_offer', 'accept_price', 'decline_price', 'open_negotiated_trade',
-'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps'
+'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps', 'set_buff_targets'
 ]);
 
 function clean(text) {
@@ -1283,6 +1284,68 @@ function goTo(context) {
     };
 }
 
+// "don't use Holy Weapon on me", "Berserker Spirit on everybody except me":
+// every companion that knows the buff takes the rule, whoever was addressed.
+function setBuffTargets(context) {
+    const leader = partyLeaderFor(context.session);
+    if (!leader) return { applied: false, reason: 'not_a_party_companion' };
+    const mode = String(context.decision.buffTargetMode || '').toLowerCase();
+    if (![...HotBotPolicyOverlay.BUFF_TARGET_MODES, 'clear'].includes(mode)) return { applied: false, reason: 'invalid_buff_target_mode' };
+    const names = (Array.isArray(context.decision.buffTargetNames) ? context.decision.buffTargetNames : [])
+        .map((name) => String(name || '').trim()).filter(Boolean).slice(0, 9);
+    const targets = [];
+    for (const name of names) {
+        const member = memberByName(leader, name);
+        if (!member?.actor) return { applied: false, reason: 'heal_target_not_in_party', requested: name.slice(0, 64) };
+        targets.push(member);
+    }
+    if (['never_on', 'only_on'].includes(mode) && !targets.length) return { applied: false, reason: 'missing_buff_targets' };
+    const requested = context.decision.skillName || (context.decision.skillNames || [])[0] || context.decision.buffPolicyType;
+    const casters = [context.session, ...partyOrders().companions(leader).filter((member) => member !== context.session)];
+    const applied = [];
+    let partyWide = false;
+    let alternatives = [];
+    for (const member of casters) {
+        const resolved = nameResolver().resolveSkill(member.actor, requested, context.decision.skillId);
+        if (!resolved.skill) {
+            if (resolved.alternatives?.length) alternatives = resolved.alternatives;
+            continue;
+        }
+        const skill = resolved.skill;
+        const rules = (HotBotPolicyOverlay.get(member)?.buffTargets || []).filter((rule) => rule.skillId !== Number(skill.fetchSelfId()));
+        if (mode !== 'clear') rules.push({ skillId: Number(skill.fetchSelfId()), mode, targetIds: targets.map((target) => Number(target.actor.fetchId())) });
+        const patch = { buffTargets: rules };
+        // "everyone except" puts a buff the leader had switched off back in the rotation.
+        if (mode !== 'never_on' && mode !== 'clear') {
+            const effect = String(skill.fetchSemantic?.()?.effect || '').toLowerCase();
+            const policy = HotBotPolicyOverlay.get(member)?.buffPolicy;
+            if (policy?.excluded?.includes(effect)) patch.buffPolicy = { excluded: policy.excluded.filter((entry) => entry !== effect), allowed: [] };
+        }
+        HotBotPolicyOverlay.set(member, patch, controllerContext({ ...context, session: member }, { lifetime: 'party' }));
+        if (['party', 'ally'].includes(String(skill.fetchTargetKind?.() || ''))) partyWide = true;
+        applied.push({ caster: member.actor.fetchName(), skill: skill.fetchName?.() });
+    }
+    if (!applied.length) return skillNotFound(alternatives.length ? 'skill_ambiguous' : 'skill_not_learned', alternatives, requested);
+    const skillName = applied[0].skill;
+    const who = targets.map((target) => (target === leader ? 'you' : target.actor.fetchName())).join(', ');
+    const casterNames = [...new Set(applied.map((entry) => entry.caster))].join(', ');
+    const line = {
+        never_on: `No more ${skillName} on ${who}.`,
+        everyone_except: who ? `${skillName} on everyone except ${who}.` : `${skillName} on everyone.`,
+        only_on: `${skillName} only on ${who}.`,
+        clear: `${skillName} back to normal.`
+    }[mode];
+    const note = partyWide && mode !== 'clear'
+        ? ` ${skillName} hits the whole party at once, so I can only use it or skip it.`
+        : '';
+    return {
+        applied: true,
+        reason: `buff_targets:${mode}`,
+        affected: applied.length,
+        playerVisibleReply: `${line}${casters.length > 1 ? ` (${casterNames})` : ''}${note}`
+    };
+}
+
 // W7: up to four steps the bot runs in order (BotTaskQueue).
 function planSteps(context) {
     const steps = Array.isArray(context.decision.steps) ? context.decision.steps : [];
@@ -1368,7 +1431,7 @@ function registerTools() {
         fetch_resources: 'For a party leader request, buy an exact new quantity of an item from the server-owned city shop catalog, return beside the leader, and offer that purchased quantity in native trade.',
         move_to_spot: 'Move to one of the provided candidate spot ids.',
         buff_target: 'Quote this buffer\'s useful learned buffs to a visible player and open a payment trade. Clanmates pay nothing.',
-        set_buff_policy: 'Temporarily allow, deny, or clear one learned friendly buff in the support rotation.',
+        set_buff_policy: 'Switch one learned buff on or off for the whole party. For a buff on or off for particular members, use set_buff_targets.',
         heal_target: 'Heal a visible player if class, MP, and range allow it.',
         set_pull_policy: 'Set the party pull permission and mode for this companion, with a bounded hot-session expiry.',
         stop_pulling_and_return: 'Disable this companion pull and start returning to the current party leader as one bounded workflow.',
@@ -1406,6 +1469,7 @@ function registerTools() {
         upgrade_gear: 'Equip any better gear in the bag; otherwise pick the next affordable upgrade from the gear plan, go buy it and come back.',
         give_adena: 'Open a trade giving the leader adenaAmount Adena ("all" for everything but a 1,000 travel reserve). No cap.',
         go_to: 'Walk to the NPC or player named destinationName (within about 12,000 units) and wait there until called back.',
+        set_buff_targets: 'Who gets one buff (skillName): buffTargetMode never_on (skip the members in buffTargetNames), everyone_except (every member, even off-role, except those named; none named = everyone), only_on (only those named), or clear. "me" is the leader. Every companion that knows the buff applies it.',
         plan_steps: 'For an order with several steps, give up to four steps in order; each step is {action, ...that action\'s fields}. Steps run one after another without further prompts.'
     };
 
@@ -1416,7 +1480,7 @@ function registerTools() {
         'set_skill_priority', 'clear_skill_priority', 'set_combat_stance',
         'list_safe_loadouts', 'equip_candidate', 'optimize_equipment',
         'propose_trade', 'give_resources', 'fetch_resources', 'offer_resources', 'update_trade_offer', 'cancel_trade',
-'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps'
+'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps', 'set_buff_targets'
     ]);
     const economyActions = new Set([
         'quote_item', 'counter_offer', 'accept_price', 'decline_price', 'open_negotiated_trade'
@@ -1463,7 +1527,8 @@ function registerTools() {
         upgrade_gear: upgradeGear,
         give_adena: giveAdena,
         go_to: goTo,
-        plan_steps: planSteps
+        plan_steps: planSteps,
+        set_buff_targets: setBuffTargets
     };
 
     ACTIONS.forEach((name) => {
@@ -1600,6 +1665,8 @@ function rejectionReply(result = {}) {
         case 'invalid_adena_amount': return 'How much Adena?';
         case 'destination_not_found': return `I don't know where${requested || ' that'} is.`;
         case 'destination_too_far': return `${result.destination || 'That'} is too far to walk; teleport closer first.`;
+        case 'invalid_buff_target_mode': return 'Tell me who should get that buff, or who should not.';
+        case 'missing_buff_targets': return 'Who should that be about?';
         case 'invalid_task_plan': return 'I could not turn that into steps I can do.';
         case 'task_plan_active': return 'I am still carrying out your last plan.';
         case 'bot_dead': return 'I am dead.';

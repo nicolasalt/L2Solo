@@ -137,6 +137,29 @@ try {
     assert.deepStrictEqual(status.blockedSkills, []);
     assert.deepStrictEqual(status.skillRules, {});
 
+    // Buffs by member: "Holy Weapon not on me", "Berserker on everybody but me".
+    const holyWeapon = skill(1043, 'Holy Weapon', { fetchTargetKind: () => 'friendly', fetchSemantic: () => ({ effectType: 'buff', effect: 'holy_weapon' }) });
+    const berserker = skill(1062, 'Berserker Spirit', { fetchTargetKind: () => 'friendly', fetchSemantic: () => ({ effectType: 'buff', effect: 'berserker_spirit' }) });
+    skills.push(holyWeapon, berserker);
+    const notOnMe = BotAgentTools.execute(bot, decision('set_buff_targets', { skillName: 'holy weapon', buffTargetMode: 'never_on', buffTargetNames: ['me'] }), [], ctx());
+    assert.strictEqual(notOnMe.applied, true, notOnMe.reason);
+    assert.strictEqual(notOnMe.playerVisibleReply, 'No more Holy Weapon on you.');
+    assert.strictEqual(HotBotPolicyOverlay.buffAllowedOn(bot, holyWeapon, 810), false);
+    assert.strictEqual(HotBotPolicyOverlay.buffAllowedOn(bot, holyWeapon, 811), null, 'others keep the normal choice');
+    const allButMe = BotAgentTools.execute(bot, decision('set_buff_targets', { skillName: 'berserker', buffTargetMode: 'everyone_except', buffTargetNames: ['me'] }), [], ctx());
+    assert.strictEqual(allButMe.applied, true, allButMe.reason);
+    assert.strictEqual(HotBotPolicyOverlay.buffAllowedOn(bot, berserker, 810), false);
+    assert.strictEqual(HotBotPolicyOverlay.buffAllowedOn(bot, berserker, 811), true, 'everyone else gets it, even off-role');
+    const SkillExecModule = require('../src/GameServer/Actor/Generics/SkillExec');
+    const remoteHits = [];
+    const caster = { ...bot.actor, skillset: { fetchSkill: (id) => skills.find((entry) => entry.fetchSelfId() === Number(id)) },
+        attack: { remoteHit: () => remoteHits.push('cast') } };
+    SkillExecModule(bot, caster, { id: 810, selfId: 1043 });
+    assert.strictEqual(remoteHits.length, 0, 'the native cast path refuses Holy Weapon on the leader');
+    const cleared2 = BotAgentTools.execute(bot, decision('set_buff_targets', { skillName: 'holy weapon', buffTargetMode: 'clear' }), [], ctx());
+    assert.strictEqual(cleared2.applied, true);
+    assert.strictEqual(HotBotPolicyOverlay.buffAllowedOn(bot, holyWeapon, 810), null);
+
     // A plan needs real steps.
     const plan = BotAgentTools.execute(bot, decision('plan_steps', { steps: [{ action: 'self_destruct' }] }), [], ctx());
     assert.strictEqual(plan.reason, 'invalid_task_plan');

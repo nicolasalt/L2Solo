@@ -16,7 +16,10 @@ function cancelFailedSupportTarget(session, actor, data, skill, reason = 'missin
 // the leader ordered that exact cast.
 function blockedByLeader(session, skill, data) {
     if (data?.leaderOrdered === true || !session?.hotPolicyOverlay) return false;
-    return invoke('GameServer/Bot/AI/HotBotPolicyOverlay').skillBlocked(session, skill);
+    const Overlay = invoke('GameServer/Bot/AI/HotBotPolicyOverlay');
+    if (Overlay.skillBlocked(session, skill)) return true;
+    // A single-target buff the leader said not to put on this member.
+    return skill.fetchTargetKind?.() !== 'enemy' && Overlay.buffAllowedOn(session, skill, data?.id) === false;
 }
 
 function skillExec(session, actor, data) {
