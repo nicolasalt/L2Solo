@@ -160,6 +160,33 @@ try {
     assert.strictEqual(cleared2.applied, true);
     assert.strictEqual(HotBotPolicyOverlay.buffAllowedOn(bot, holyWeapon, 810), null);
 
+    // "necromancers, buy cursed bones": whoever is addressed, the named members buy.
+    const SupplyErrand = invoke('GameServer/Bot/AI/BotSupplyErrand');
+    const Resolver = invoke('GameServer/Bot/AI/BotNameResolver');
+    const originalRequest = SupplyErrand.request;
+    const originalResolve = Resolver.resolveSupplyItem;
+    const buyers = [];
+    try {
+        Resolver.resolveSupplyItem = () => ({ selfId: 2508, name: 'Cursed Bone', reason: null, alternatives: [] });
+        SupplyErrand.request = (session, leaderSession, selfId, amount, options) => {
+            buyers.push([session.actor.fetchName(), selfId, amount, options.forSelf]);
+            return { ok: true, itemSelfId: selfId, itemName: 'Cursed Bone', amount, cost: amount * 360, town: 'Giran' };
+        };
+        const named = BotAgentTools.execute(bot, decision('buy_for_self', { itemName: 'cursed bones', amount: 20, forMembers: ['Caster'] }), [], ctx());
+        assert.strictEqual(named.applied, true, named.reason);
+        assert.deepStrictEqual(buyers, [['Caster', 2508, 20, true]]);
+        assert.strictEqual(named.playerVisibleReply, 'Caster: going to Giran for 20 Cursed Bone (7,200 Adena).');
+        buyers.length = 0;
+        const everyone = BotAgentTools.execute(bot, decision('buy_for_self', { itemName: 'cursed bones', amount: 5, forMembers: ['everyone'] }), [], ctx());
+        assert.strictEqual(everyone.applied, true);
+        assert.strictEqual(buyers.length, 1, 'every companion buys once');
+        const nobody = BotAgentTools.execute(bot, decision('buy_for_self', { itemName: 'cursed bones', amount: 5, forMembers: ['Gladiators'] }), [], ctx());
+        assert.strictEqual(nobody.reason, 'no_matching_members');
+    } finally {
+        SupplyErrand.request = originalRequest;
+        Resolver.resolveSupplyItem = originalResolve;
+    }
+
     // A plan needs real steps.
     const plan = BotAgentTools.execute(bot, decision('plan_steps', { steps: [{ action: 'self_destruct' }] }), [], ctx());
     assert.strictEqual(plan.reason, 'invalid_task_plan');

@@ -1147,7 +1147,7 @@ function overrideRule(context) {
     };
 }
 
-function buyForSelf(context) {
+function buyForOne(context) {
     const session = context.session;
     const leader = partyLeaderFor(session);
     const resolved = nameResolver().resolveSupplyItem(context.decision.itemName || context.decision.supplyItemName,
@@ -1173,7 +1173,7 @@ function buyForSelf(context) {
     };
 }
 
-function upgradeGear(context) {
+function upgradeGearForOne(context) {
     const session = context.session;
     const bot = session.actor;
     const upgrades = BotEquipmentUpgrade.applyBestUpgrades(session);
@@ -1282,6 +1282,72 @@ function goTo(context) {
         destination: destination.name,
         playerVisibleReply: `Walking to ${destination.name}. I'll tell you when I'm there and wait for you.`
     };
+}
+
+const ROLE_WORDS = {
+    mage: 'mage', mages: 'mage', caster: 'mage', casters: 'mage', nuker: 'mage', nukers: 'mage',
+    healer: 'healer', healers: 'healer', tank: 'tank', tanks: 'tank', buffer: 'buffer', buffers: 'buffer',
+    support: 'buffer', supports: 'buffer', archer: 'archer', archers: 'archer', dagger: 'dagger', daggers: 'dagger',
+    dps: 'dps', fighter: 'dps', fighters: 'dps', warrior: 'dps', warriors: 'dps'
+};
+
+// Party members an order names: "everyone", names, classes ("necromancers")
+// or roles ("mages", "healers").
+function membersMatching(leader, words) {
+    const members = partyOrders().companions(leader);
+    const found = new Set();
+    for (const raw of words) {
+        const word = String(raw || '').trim().toLowerCase();
+        if (!word) continue;
+        if (/^(?:everyone|everybody|all|all of you|party|the party|you all|guys)$/.test(word)) {
+            members.forEach((member) => found.add(member));
+            continue;
+        }
+        const byName = members.filter((member) => String(member.actor.fetchName?.() || '').toLowerCase() === word);
+        const byClass = members.filter((member) => nameResolver().score(word, BotRoles.presentation(member.actor).className || '') >= 0.9);
+        const role = ROLE_WORDS[word];
+        const byRole = role ? members.filter((member) => BotRoles.inferRole(member.actor) === role) : [];
+        (byName.length ? byName : byClass.length ? byClass : byRole).forEach((member) => found.add(member));
+    }
+    return [...found];
+}
+
+// Runs a per-bot errand on the members the order names (forMembers), or on
+// this bot alone, and answers once for all of them.
+function forEachNamedMember(context, runOne, describe) {
+    const words = Array.isArray(context.decision.forMembers) ? context.decision.forMembers.filter(Boolean) : [];
+    if (!words.length) return runOne(context);
+    const leader = partyLeaderFor(context.session);
+    if (!leader) return { applied: false, reason: 'not_a_party_companion' };
+    const members = membersMatching(leader, words);
+    if (!members.length) return { applied: false, reason: 'no_matching_members', requested: words.join(', ').slice(0, 64) };
+    const results = members.map((member) => {
+        try {
+            const turnId = `${context.requestContext?.conversationTurn?.turnId || 'turn'}:member:${member.actor.fetchId()}`;
+            return { member, result: runOne({ ...context, session: member, decision: { ...context.decision, forMembers: [] },
+                requestContext: { ...context.requestContext, conversationTurn: { ...(context.requestContext?.conversationTurn || {}), turnId } } }) };
+        } catch (error) {
+            return { member, result: { applied: false, reason: `tool_error:${error.message}` } };
+        }
+    });
+    const lines = results.map(({ member, result }) => `${member.actor.fetchName()}: ${result.applied ? describe(result) : rejectionReply({ ...result, playerVisibleReply: null })}`);
+    const started = results.filter(({ result }) => result.applied);
+    return {
+        applied: started.length > 0,
+        outcome: started.some(({ result }) => result.outcome === 'pending') ? 'pending' : undefined,
+        reason: started.length ? 'member_errands_started' : results[0].result.reason,
+        affected: started.length,
+        playerVisibleReply: lines.join(' ')
+    };
+}
+
+function buyForSelf(context) {
+    return forEachNamedMember(context, buyForOne, (result) =>
+        `going to ${result.town} for ${result.amount} ${result.itemName} (${Number(result.cost).toLocaleString('en-US')} Adena).`);
+}
+
+function upgradeGear(context) {
+    return forEachNamedMember(context, upgradeGearForOne, (result) => result.playerVisibleReply || 'upgrading.');
 }
 
 // "don't use Holy Weapon on me", "Berserker Spirit on everybody except me":
@@ -1465,8 +1531,8 @@ function registerTools() {
         clear_skill_preferences: 'Clear prefer/avoid orders for skillNames, or for every skill when skillNames is empty.',
         set_skill_rule: 'Set a rotation rule: skillRule no_debuffs | allow_debuffs | recharge_below (ruleValue = MP percent; healers Recharge anyone below it, in combat too) | no_recharge_rule | clear.',
         override_rule: 'Override a built-in caution rule for the party (scope=self for this bot): overrideName ignore_level_limits | engage_raid | no_retreat | spend_all_mp, overrideEnabled true/false. The raid curse, death and missing skills stay hard limits.',
-        buy_for_self: 'Go to the shop that sells itemName (shots, potions, scrolls, gear), buy amount with this bot\'s own Adena, keep it and come back.',
-        upgrade_gear: 'Equip any better gear in the bag; otherwise pick the next affordable upgrade from the gear plan, go buy it and come back.',
+        buy_for_self: 'Go to the shop that sells itemName (shots, potions, scrolls, reagents, gear), buy amount with the buyer\'s own Adena, keep it and come back. forMembers names who buys (names, classes like "necromancers", roles like "mages", or "everyone"); empty = this bot.',
+        upgrade_gear: 'Equip any better gear in the bag; otherwise pick the next affordable upgrade from the gear plan, go buy it and come back. forMembers as for buy_for_self.',
         give_adena: 'Open a trade giving the leader adenaAmount Adena ("all" for everything but a 1,000 travel reserve). No cap.',
         go_to: 'Walk to the NPC or player named destinationName (within about 12,000 units) and wait there until called back.',
         set_buff_targets: 'Who gets one buff (skillName): buffTargetMode never_on (skip the members in buffTargetNames), everyone_except (every member, even off-role, except those named; none named = everyone), only_on (only those named), or clear. "me" is the leader. Every companion that knows the buff applies it.',
@@ -1667,6 +1733,7 @@ function rejectionReply(result = {}) {
         case 'destination_too_far': return `${result.destination || 'That'} is too far to walk; teleport closer first.`;
         case 'invalid_buff_target_mode': return 'Tell me who should get that buff, or who should not.';
         case 'missing_buff_targets': return 'Who should that be about?';
+        case 'no_matching_members': return `Nobody in the party matches${requested || ' that'}.`;
         case 'invalid_task_plan': return 'I could not turn that into steps I can do.';
         case 'task_plan_active': return 'I am still carrying out your last plan.';
         case 'bot_dead': return 'I am dead.';

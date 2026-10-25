@@ -271,6 +271,12 @@ function schema(allowedActions = BotAgentTools.ACTIONS, session = null) {
                 maxItems: 9,
                 description: 'set_buff_targets: party member names; "me" is the leader.'
             },
+            forMembers: {
+                type: 'array',
+                items: { type: 'string' },
+                maxItems: 9,
+                description: 'buy_for_self / upgrade_gear: who does it: party member names, class names ("necromancers"), roles ("mages") or "everyone". Empty = this bot.'
+            },
             itemName: {
                 type: 'string',
                 description: 'Item by name: for buy_for_self/fetch_resources a shop item ("D-grade spiritshot"), for give_resources/equip_candidate an item in bot.inventory.bag.'
@@ -410,6 +416,7 @@ function systemPrompt(session = null) {
         'Your kit: bot.skills.kit lists every learned active skill as [skillId, name, level, mpCost, reuseSeconds, kind] and bot.inventory.bag every bag item as [objectId, name, amount]; bot.equipment shows what you wear. Answer questions about your skills, weapons and items from these lists, and never call a listed skill or item missing.',
         'Tools take names: skillName/skillNames, itemName, destinationName, targetName, healTargetName. The server matches names loosely, so pass the words the player used or the listed name.',
         'Built-in caution (level limits, keeping clear of raid bosses, retreating, keeping an MP reserve) yields to the leader: attack_target overrides level and raid-safety rules for that fight, override_rule for longer. Hard limits stay: death, unreachable targets, unlearned skills, and the C4 raid curse (a bot more than 8 levels above a raid boss is silenced or petrified for fighting it).',
+        'An order may be meant for other party members, by name, class or role ("necromancers, buy cursed bones", "mages, get new staffs"). You can still carry it out: pass them in forMembers and the server runs it on each of them. Never answer that it is not for you.',
         'For an order with several steps ("go to the grocer, buy potions, come back"), use plan_steps with the steps in order.',
         'For a risky order (a pull likely to wipe the party, or spending nearly all of the bot\'s Adena), ask once with say, naming the risk. When the leader confirms, carry it out with the tool and do not ask again.',
         'Choose exactly one action for the explicit player message in this turn.',
@@ -648,7 +655,7 @@ async function enforceHonesty(decision, payload, cfg, session, requestContext, v
 // potions") runs on every companion, with one reply.
 const FAN_OUT_ACTIONS = new Set([
     'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'use_skill',
-    'buy_for_self', 'upgrade_gear', 'optimize_equipment', 'set_combat_stance', 'rest'
+    'optimize_equipment', 'set_combat_stance', 'rest'
 ]);
 
 function fanOutTargets(session, requestContext, text) {
