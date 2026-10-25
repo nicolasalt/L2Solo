@@ -210,6 +210,12 @@ function set(session, patch = {}, context = {}) {
     if (patch.buffTargets === null) updated.buffTargets = [];
 
     session.hotPolicyOverlay = updated;
+    // A player's party orders are standing orders: kept for the next session.
+    const leaderId = Number(updated.ownerId || session.followPlayerSession?.actor?.fetchId?.() || 0);
+    if (updated.lifetime === 'party' && context.restoring !== true && session.partyCompanion === true && leaderId
+        && session.followPlayerSession?.botSession !== true) {
+        invoke('GameServer/Bot/AI/LeaderOrderStore').save(leaderId, session.actor?.fetchId?.(), updated);
+    }
     return { ...updated, skillPriorities: { ...updated.skillPriorities }, pull: updated.pull && { ...updated.pull } };
 }
 
@@ -222,6 +228,8 @@ function clear(session, reason = 'lifecycle') {
 }
 
 function clearForDeath(session) {
+    // The leader's standing orders survive a death.
+    if (session?.hotPolicyOverlay?.lifetime === 'party' && session.partyCompanion === true) return false;
     return clear(session, 'death');
 }
 

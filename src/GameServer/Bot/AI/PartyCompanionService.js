@@ -1124,6 +1124,7 @@ const PartyCompanionService = {
             companionSession.plan = 'following';
             companionSession.followPlayerSession = leaderSession;
             companionSession.partyCompanion = true;
+            invoke('GameServer/Bot/AI/LeaderOrderStore').restore(companionSession, leaderSession);
             companionSession.botStay = false;
             companionSession.stayLocation = null;
             companionSession.currentTargetId = undefined;
@@ -1194,6 +1195,7 @@ const PartyCompanionService = {
         companionSession.plan = 'following';
         companionSession.followPlayerSession = leaderSession;
         companionSession.partyCompanion = true;
+        invoke('GameServer/Bot/AI/LeaderOrderStore').restore(companionSession, leaderSession);
         invoke('GameServer/Bot/AI/BotPvpIndex').invalidate();
         refreshPartyMemberships([companionSession], invoke);
         companionSession.botStay = false;

@@ -105,6 +105,7 @@ const common = {
     'GameServer/Bot/AI/BotSupportPlanner': { cancelSupportCast: noop },
     'GameServer/Bot/BotTradeService': { cleanup: noop },
     'GameServer/Bot/AI/HotBotPolicyOverlay': { clearForPartyDetach: noop },
+    'GameServer/Bot/AI/LeaderOrderStore': { restore: noop },
     'GameServer/Bot/AI/BotSocialMemory': { recordEvent: noop },
     'GameServer/World/Generics/NpcBypasses/CompanionControl': { render: noop },
     // Detach retires a player-party ownership marker (8019829c); these bots carry none.
