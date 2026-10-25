@@ -450,6 +450,10 @@ function reportTransactionSqliteFailure(operation, phase, error) {
 // without changing either rejection identity or the existing failure counters.
 function reportBotLifeSaveFailure(phase, error) {
     try {
+        // Shutdown refuses cold results still in flight by design: the bot
+        // resumes from its last saved state, so this is not a save failure.
+        if (error?.message === 'coordinator_stopping'
+            && error instanceof require('./GameServer/Bot/Population/WorkerCommandAdmission').WorkerCommandAdmissionRefusal) return;
         const checkpoint = NativeWriteCheckpoint.refusalDiagnostic(error);
         if (!DiagnosticConfig.developerDiagnostics) {
             if (checkpoint) {
