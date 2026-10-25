@@ -181,6 +181,15 @@ class Backpack extends BackpackModel {
     }
 
     fetchAutoSpiritshot(actor) {
+        // A bot casting with blessed spiritshots of its grade in the bag fires
+        // those first; nothing else turns them on for a bot.
+        if (actor.session?.botSession === true) {
+            const blessed = ShotStock.planForActorKind('blessedSpiritshot', actor);
+            const stack = ShotStock.planForActor(actor).kind === 'spiritshot' && this.fetchItemFromSelfId?.(blessed.selfId);
+            if (stack && stack.fetchAmount() >= Math.max(1, this.fetchShotCost('spiritshot'))) {
+                return { kind: 'blessedSpiritshot', selfId: blessed.selfId };
+            }
+        }
         for (const kind of ['spiritshot', 'blessedSpiritshot']) {
             const selfId = this.fetchAutoShot(actor, kind);
             if (selfId) return { kind, selfId };

@@ -122,6 +122,17 @@ assert.strictEqual(ShotStock.isPersonalShot(caster, 2510), true, 'a caster retai
 assert.strictEqual(counts(ItemDisposition.saleCandidates(caster, { unlimited: true })).get(2510), undefined);
 assert.strictEqual(counts(ItemDisposition.saleCandidates(caster, { unlimited: true })).get(D_SOULSHOT), 350,
     'the unused physical shot kind stays available for sale');
+// Blessed spiritshots of the caster's grade (a leader's gift) are kept too;
+// another grade's are not.
+caster.inventory[3948] = { selfId: 3948, amount: 1000, stackable: true };
+caster.inventory[3949] = { selfId: 3949, amount: 10, stackable: true };
+assert.strictEqual(ShotStock.isPersonalShot(caster, 3948), true, 'a caster keeps blessed spiritshots of its grade');
+assert.strictEqual(counts(ItemDisposition.saleCandidates(caster, { unlimited: true })).get(3948), undefined,
+    'gifted blessed spiritshots are never sold to the NPC');
+assert.strictEqual(ShotStock.isPersonalShot(caster, 3949), false, 'another grade stays spare');
+assert.strictEqual(ShotStock.isPersonalShot(orc, 3948), false, 'a fighter has no use for blessed spiritshots');
+delete caster.inventory[3948];
+delete caster.inventory[3949];
 assert.strictEqual(counts(ItemDisposition.saleCandidates(orc, { keptAmounts: {}, unlimited: true })).get(D_SOULSHOT), undefined,
     'a prepared warehouse or escrow projection cannot bypass personal ammunition protection');
 const upgraded = structuredClone(orc);

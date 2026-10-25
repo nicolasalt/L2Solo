@@ -182,7 +182,11 @@ function usePolicy(state, prepared = {}) {
 function isPersonalShot(state, selfId) {
     if (!SHOT_IDS.includes(Number(selfId))) return false;
     const plan = planForState(state);
-    return Number(selfId) === plan.selfId && plan.perAction > 0
+    // A caster also keeps blessed spiritshots of its grade: it fires them
+    // (Backpack.fetchAutoSpiritshot), and they are usually a leader's gift.
+    const own = Number(selfId) === plan.selfId
+        || (plan.kind === 'spiritshot' && Number(selfId) === BLESSED_SPIRITSHOT_BY_RANK[plan.rank]);
+    return own && plan.perAction > 0
         && !invoke('GameServer/Bot/Economy/CraftEligibility').isServiceCrafter(state);
 }
 
