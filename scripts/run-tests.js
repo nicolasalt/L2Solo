@@ -318,6 +318,7 @@ const tests = [
     'tests/test_bot_name_resolver.js',
     'tests/test_bot_party_orders.js',
     'tests/test_bot_tool_leader_orders.js',
+    'tests/test_party_coordinator.js',
     'tests/test_llm_equipment_tools.js',
     'tests/test_llm_trade_tools.js',
     'tests/test_llm_negotiation_tools.js',

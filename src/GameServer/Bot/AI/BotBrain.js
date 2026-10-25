@@ -1026,7 +1026,18 @@ function tracePreProviderFallback(session, requestContext, outcome, playerMessag
     });
 }
 
+// The tool argument fields and their descriptions, shared with the party
+// coordinator's plan prompt.
+function decisionFields(session = null) {
+    const properties = { ...schema(BotAgentTools.ACTIONS, session).properties };
+    ['action', 'reply', 'reason', 'confidence', 'worldRevision'].forEach((key) => delete properties[key]);
+    return properties;
+}
+
 const BotBrain = {
+    decisionFields,
+    systemPrompt,
+
     isEnabled() {
         const cfg = config();
         return OpenRouterGateway.isConfigured(cfg);

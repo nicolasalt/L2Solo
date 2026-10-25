@@ -867,6 +867,15 @@ const World = {
             const marketChat = invoke('GameServer/Bot/Economy/BotAfkTradeChat');
             // The leader's own companion takes orders, not shop haggling.
             const ownCompanion = hotSession.partyCompanion === true && hotSession.followPlayerSession === session;
+            const Coordinator = invoke('GameServer/Bot/AI/PartyCoordinator');
+            if (ownCompanion && Coordinator.enabled()) {
+                return Coordinator.handle(session, message, { channel: 'client_tell', addressed: hotSession })
+                    .then((result) => result?.handled === true)
+                    .catch((error) => {
+                        utils.infoWarn('Coordinator', 'whisper failed: %s', error.message);
+                        return false;
+                    });
+            }
             if (!ownCompanion && marketState && marketChat.parse(marketState, message, session)) {
                 return BotRemoteChat.replyForState(session, marketState, message, source)
                     .then((result) => result?.ok === true && result.delivered === true);

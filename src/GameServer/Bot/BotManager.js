@@ -860,6 +860,17 @@ const BotManager = {
         const groupAddress = /\b(bot|bots|guys|party|team|help|everyone|everybody|companions|all)\b/.test(text) || /(бот|боты|ребят|народ|пати|команда|кто-нибудь)/.test(text);
         const partyChannel = Number(data.kind) === 3;
 
+        // With the coordinator on, one model plans the whole party's answer;
+        // none of the word matching below runs for the leader's party chat.
+        const Coordinator = invoke('GameServer/Bot/AI/PartyCoordinator');
+        if (partyChannel && Coordinator.enabled()
+            && invoke('GameServer/Bot/AI/BotPartyOrders').isLeaderOf(playerSession)) {
+            return Coordinator.handle(playerSession, rawText, { channel: 'party_chat' }).catch((error) => {
+                utils.infoWarn('Coordinator', 'party message failed: %s', error.message);
+                return { handled: false, reason: 'coordinator_error' };
+            });
+        }
+
         // Plain party orders ("attack", "all back to me", "help!") run on
         // every companion at once, without waiting for the model. With the
         // LLM off the legacy chat commands below keep handling them.
