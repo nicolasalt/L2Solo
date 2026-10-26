@@ -1297,13 +1297,14 @@ function raidBossLoot() {
             row.maxAmount = Math.max(row.maxAmount, item.maxAmount);
             byItem.set(item.itemId, row);
         }
-        // Compact rows, [itemId, name, chance %, min, max]: the table holds
-        // every boss, so keep it small.
+        // Compact rows, [itemId, name, chance %, min, max, category]: the
+        // table holds every boss, so keep it small.
         bosses[id] = [...byItem.values()]
             .map((row) => ({ ...row, chance: Number(((1 - row.miss) * 100).toPrecision(3)) }))
             .filter((row) => row.chance > 0)
             .sort((a, b) => b.chance - a.chance || a.name.localeCompare(b.name))
-            .map((row) => [row.itemId, row.name, row.chance, row.minAmount, row.maxAmount]);
+            .map((row) => [row.itemId, row.name, row.chance, row.minAmount, row.maxAmount,
+                knowledge.itemOverview(row.itemId)?.category || 'other']);
     }
     const value = { rateProfile: knowledge.meta?.()?.rateProfile || ProgressionRates.profile(), bosses };
     raidBossLootCache = { rates, value };

@@ -761,7 +761,7 @@ function loadRaidBossLoot() {
 
 function raidBossLootRows(id) {
     return (state.raidBossLoot?.bosses?.[id] || [])
-        .map(([itemId, name, chance, min, max]) => ({ itemId, name, chance, min, max }));
+        .map(([itemId, name, chance, min, max, category]) => ({ itemId, name, chance, min, max, category }));
 }
 
 function lootAmount(row) {
@@ -778,13 +778,18 @@ function lootRateLabel() {
     return preset ? `${preset} rates` : 'server rates';
 }
 
+const GEAR_CATEGORIES = new Set(['weapons', 'armor', 'jewelry']);
+
+// The table lists every gear drop (weapons, armor, jewelry); the full drop
+// list stays in the tooltip and on the map card.
 function raidBossLootCell(boss) {
     if (!state.raidBossLoot) return '<span class="raid-boss-loot"><span>Loading loot…</span></span>';
     const rows = raidBossLootRows(boss.id);
-    if (!rows.length) return '<span class="raid-boss-loot"><span>No drops</span></span>';
+    const gear = rows.filter((row) => GEAR_CATEGORIES.has(row.category));
     const full = rows.map((row) => `${row.name}${lootAmount(row)} — ${lootChance(row.chance)}`).join('\n');
-    const top = rows.slice(0, 3).map((row) => `<span><b>${text(lootChance(row.chance))}</b> ${text(row.name)}${text(lootAmount(row), '')}</span>`).join('');
-    return `<span class="raid-boss-loot" title="${escapeHtml(`Drops at ${lootRateLabel()}:\n${full}`)}">${top}${rows.length > 3 ? `<span class="raid-boss-loot-more">+${number(rows.length - 3)} more</span>` : ''}</span>`;
+    const title = rows.length ? ` title="${escapeHtml(`Drops at ${lootRateLabel()}:\n${full}`)}"` : '';
+    if (!gear.length) return `<span class="raid-boss-loot"${title}><span>No gear drops</span></span>`;
+    return `<span class="raid-boss-loot"${title}>${gear.map((row) => `<span><b>${text(lootChance(row.chance))}</b> ${text(row.name)}${text(lootAmount(row), '')}</span>`).join('')}</span>`;
 }
 
 function raidBossLootList(boss) {
@@ -811,7 +816,7 @@ function renderRaidBosses() {
     }
 
     els.raidBossSummary.textContent = `${number(counts.alive)} in world · ${number(counts.respawning)} respawning · ${number(counts.missing)} missing · ${number(raidBossState.total)} total`
-        + (state.raidBossLoot ? ` · loot chances at ${lootRateLabel()}` : '');
+        + (state.raidBossLoot ? ` · gear drop chances at ${lootRateLabel()}` : '');
     const bosses = filteredRaidBosses();
     els.raidBossScope.textContent = `${number(bosses.length)} boss${bosses.length === 1 ? '' : 'es'}`;
     els.raidBossList.innerHTML = bosses.length

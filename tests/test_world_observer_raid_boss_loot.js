@@ -26,6 +26,9 @@ const Observer = invoke('WorldObserver/WorldObserverServer');
         assert(kutus.length > 5);
         assert.deepStrictEqual(kutus[0].slice(0, 2), [6576, 'Blessed Scroll: Enchant Armor (D)']);
         assert(kutus.every(([, , chance], index) => chance > 0 && chance <= 100 && (index === 0 || chance <= kutus[index - 1][2])));
+        // Each row names its category, so the table can list gear only.
+        assert.strictEqual(kutus.find((row) => row[0] === 377)[5], 'armor', 'Scale Gaiters is armor');
+        assert(!['weapons', 'armor', 'jewelry'].includes(kutus[0][5]), 'an enchant scroll is not gear');
         assert(JSON.stringify(x1).length < 200000, 'the whole table stays small');
 
         // Higher rates raise the chances (and the table follows the rate change).

@@ -1089,8 +1089,7 @@ svg.empty-glyph { width: 38px; height: 38px; }
 .raid-boss-timer span { color: var(--muted); }
 .raid-boss-loot { min-width: 0; }
 .raid-boss-loot > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 10px; line-height: 1.45; }
-.raid-boss-loot b { display: inline-block; min-width: 34px; color: var(--gold); font-weight: 760; font-variant-numeric: tabular-nums; }
-.raid-boss-loot .raid-boss-loot-more { color: var(--faint); font-size: 9px; }
+.raid-boss-loot b { display: inline-block; min-width: 44px; color: var(--gold); font-weight: 760; font-variant-numeric: tabular-nums; }
 .raid-boss-card-loot { margin-top: 10px; pointer-events: auto; }
 .raid-boss-card-loot ol { max-height: 220px; margin: 6px 0 0; padding: 0 4px 0 0; overflow: auto; list-style: none; }
 .raid-boss-card-loot li { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-bottom: 1px solid var(--line-soft); color: var(--muted); font-size: 11px; }
