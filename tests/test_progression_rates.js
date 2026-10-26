@@ -77,33 +77,13 @@ assert.strictEqual(ProgressionRates.rollDropAmount(madnessGroup, enchantWeaponD,
 assert.strictEqual(ProgressionRates.rollDropAmount(madnessGroup, enchantWeaponD, 10, () => 0.83034), 4, 'x10 EWD must produce a fourth item when the 83.035% overflow roll hits');
 assert.deepStrictEqual(ProgressionRates.dropAmountRange(madnessGroup, enchantWeaponD, 10), { min: 3, max: 4 }, 'displayed high-rate range must match the runtime overflow roll');
 
-const noDeepBlue = ProgressionRates.deepBlueRule({ npcLevel: 20, killerLevel: 28, attackerLevels: [27] });
-assert.strictEqual(noDeepBlue.active, false);
-assert.strictEqual(noDeepBlue.chanceMultiplier, 1);
-
-const deepBlue = ProgressionRates.deepBlueRule({ npcLevel: 20, killerLevel: 29, attackerLevels: [25] });
-assert.strictEqual(deepBlue.active, true);
-assert.strictEqual(deepBlue.penaltyPercent, 9);
-assert.strictEqual(deepBlue.chanceMultiplier, 0.91 / 3);
-
-const highContributor = ProgressionRates.deepBlueRule({ npcLevel: 20, killerLevel: 20, attackerLevels: [30] });
-assert.strictEqual(highContributor.levelGap, 10);
-assert.strictEqual(highContributor.penaltyPercent, 18);
-
+// No Deep Blue drop penalty: a killer far above the monster gets the same roll.
 process.env.L2NODE_PROGRESSION_RATE = 'x10';
-const deepBlueAdena = ProgressionRates.rewardGroupRoll(adenaGroup, 'drop', { npcLevel: 20, killerLevel: 29 }, () => 0.2);
-assert.strictEqual(deepBlueAdena.rule.active, true);
-assert.strictEqual(deepBlueAdena.amountMultiplier, 7);
-assert.strictEqual(deepBlueAdena.hit, true);
-
-const deepBlueItem = ProgressionRates.rewardGroupRoll({ overall: 100, items: [{ selfId: 1000 }] }, 'drop', { npcLevel: 20, killerLevel: 29 }, () => 0.31);
-assert.strictEqual(deepBlueItem.hit, true);
-assert.strictEqual(deepBlueItem.amountMultiplier, 10);
-assert.strictEqual(deepBlueItem.itemRate, profile.drop, 'deep-blue penalties must not reduce selected-item high-rate overflow');
-
-const summonOwner = ProgressionRates.deepBlueRule({ npcLevel: 20, killerLevel: 40, attackerLevels: [10] });
-assert.strictEqual(summonOwner.highestLevel, 40);
-assert.strictEqual(summonOwner.active, true);
+for (const group of [adenaGroup, { overall: 100, items: [{ selfId: 1000 }] }]) {
+    const sameLevel = ProgressionRates.rewardGroupRoll(group, 'drop', { npcLevel: 20, killerLevel: 20 }, () => 0.5);
+    const overLevel = ProgressionRates.rewardGroupRoll(group, 'drop', { npcLevel: 20, killerLevel: 60 }, () => 0.5);
+    assert.deepStrictEqual(overLevel, sameLevel, 'a level gap never changes a drop roll');
+}
 
 const originalDropChanceRate = options.default.General.dropChanceRate;
 options.default.General.dropChanceRate = 0;

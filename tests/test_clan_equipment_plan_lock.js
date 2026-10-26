@@ -124,8 +124,8 @@ async function main() {
                 raidBossTemplateId: 999999,
                 sourceLevel: 50
             } }
-        }, [{ level: 59, stats: {} }], Date.now()), true,
-        'an overlevel member must be removed even after raid preparation starts because Raid Curse disables combat');
+        }, [{ level: 59, stats: {} }], Date.now()), false,
+        'an overlevel member stays in a started raid: there is no raid curse');
         assert.strictEqual(ClanEquipmentPartyPolicy.needsReview(raidParty, [{
             level: 99,
             stats: { clanHuntBackoffs: [{ spotId: 'raid:10029', until: Date.now() + 60000 }] }

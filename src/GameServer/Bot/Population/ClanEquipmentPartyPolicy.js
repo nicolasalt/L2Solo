@@ -11,11 +11,6 @@ function sourceLevel(objective) {
     const npcId = Number(objective?.raidBossTemplateId || objective?.npcId || 0);
     return levels.get(npcId) || Number(objective?.sourceLevel || 0);
 }
-function raidLevelAllowed(member, objective) {
-    if (!(objective?.sourceKind === 'raid' || objective?.raidBoss === true)) return true;
-    const level = sourceLevel(objective);
-    return !level || Number(member?.level || 0) <= level + 8;
-}
 function applies(objective) {
     return objective?.clanOperation === 'equipment' && Number(objective.clanId) > 0;
 }
@@ -35,10 +30,6 @@ function abandonedRaid(party) {
         || Number(backoff.attempts || 0) >= 2;
 }
 function allowed(member, objective, timestamp = Date.now()) {
-    // This is a game-mechanics limit, not merely an equipment-plan preference.
-    // Keep it authoritative for every autonomous raid so a stale or synthetic
-    // roster cannot enter hot combat and receive Raid Curse.
-    if (!raidLevelAllowed(member, objective)) return false;
     if (!applies(objective)) return true;
     const level = sourceLevel(objective);
     if (level && Number(member.level) > 0
@@ -51,9 +42,7 @@ function needsReview(party, members, timestamp) {
     if (party?.stats?.raidEncounter?.status === 'failed') return true;
     if (abandonedRaid(party)) return true;
     // Ordinary route changes and hunt backoffs must not dismantle a raid in
-    // progress, but an overlevel member is different: C4 will hard-disable
-    // that character as soon as it attacks or supports the raid.
-    if (members.some(member => !raidLevelAllowed(member, objective))) return true;
+    // progress.
     const raidStarted = (objective?.sourceKind === 'raid' || objective?.raidBoss === true)
         && (['preparing', 'ready'].includes(party?.stats?.raidPreparation?.status)
             || party?.stats?.raidEncounter?.status === 'active');
@@ -83,4 +72,4 @@ function recordOutcome(state, result, objective, timestamp) {
     return { ...result, patch: { ...result.patch, stats: { ...result.patch?.stats,
         clanHuntRisk: risk, clanHuntBackoffs: remembered.stats.spotBackoffs } } };
 }
-module.exports = { sourceLevel, raidLevelAllowed, applies, abandonedRaid, allowed, needsReview, recordOutcome };
+module.exports = { sourceLevel, applies, abandonedRaid, allowed, needsReview, recordOutcome };

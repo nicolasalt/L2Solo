@@ -305,7 +305,7 @@ function createKnowledgeBaseService({ dataDir, progressionRates, iconFor = null,
             adena: Number(profile.adena || 1),
             drop: Number(profile.drop || 1),
             spoil: Number(profile.spoil || 1),
-            assumption: 'same-level solo kill; Deep Blue penalty is not applied'
+            assumption: 'solo kill; the server has no Deep Blue penalty'
         };
     }
 

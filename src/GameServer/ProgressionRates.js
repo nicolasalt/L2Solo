@@ -4,12 +4,6 @@ const PRESETS = {
     x50: { label: 'x50', multiplier: 50 }
 };
 
-const DEEP_BLUE_LEVEL_GAP = 9;
-const DEEP_BLUE_PENALTY_PER_LEVEL = 9;
-const DEEP_BLUE_CHANCE_DIVISOR = 3;
-// L2DropData.MAX_CHANCE is 1,000,000 in Lisvus, whose post-rounding floor is 1.
-const MIN_DEEP_BLUE_CHANCE = 0.0001;
-
 function numberOr(value, fallback) {
     if (value === undefined || value === null || value === '') return fallback;
     const parsed = Number(value);
@@ -171,67 +165,13 @@ function rollDropAmount(group, item, rate, rng = Math.random) {
     return Math.max(1, amount);
 }
 
-// A usable attacker level, or 0 when it is missing or malformed.
-function attackerLevel(level) {
-    const value = Number(level);
-    return Number.isFinite(value) && value > 0 ? value : 0;
-}
-
-function deepBlueLevelGap(npcLevel, highestLevel) {
-    const normalizedNpcLevel = Number(npcLevel);
-    return Number.isFinite(normalizedNpcLevel) && normalizedNpcLevel > 0
-        ? highestLevel - normalizedNpcLevel
-        : 0;
-}
-
-// The single-killer answer of deepBlueRule without building the rule: hot
-// readers (source facts per item) only need to know whether a penalty applies.
-function deepBlueActive(npcLevel, killerLevel) {
-    return deepBlueLevelGap(npcLevel, attackerLevel(killerLevel)) >= DEEP_BLUE_LEVEL_GAP;
-}
-
-function deepBlueRule({ npcLevel, killerLevel, attackerLevels = [] } = {}) {
-    const levels = [killerLevel, ...attackerLevels]
-        .map(attackerLevel)
-        .filter((level) => level > 0);
-    const highestLevel = levels.length > 0 ? Math.max(...levels) : 0;
-    const levelGap = deepBlueLevelGap(npcLevel, highestLevel);
-
-    if (levelGap < DEEP_BLUE_LEVEL_GAP) {
-        return { active: false, highestLevel, levelGap, penaltyPercent: 0, chanceMultiplier: 1, minimumChance: 0 };
-    }
-
-    const penaltyPercent = (levelGap - (DEEP_BLUE_LEVEL_GAP - 1)) * DEEP_BLUE_PENALTY_PER_LEVEL;
-    return {
-        active: true,
-        highestLevel,
-        levelGap,
-        penaltyPercent,
-        chanceMultiplier: Math.max(0, (100 - penaltyPercent) / 100) / DEEP_BLUE_CHANCE_DIVISOR,
-        minimumChance: MIN_DEEP_BLUE_CHANCE
-    };
-}
-
+// This server has no Deep Blue drop penalty: a monster or boss far below the
+// killer drops as it would for a killer of its own level, so the context
+// (npc and killer levels) does not change the roll.
 function rewardGroupRoll(group, kind = 'drop', context = {}, rng = Math.random) {
-    const current = profile();
-    const rule = deepBlueRule(context);
-    const baseRate = groupRate(group, kind);
-    let rate = baseRate;
-
-    if (rule.active) {
-        rate *= rule.chanceMultiplier;
-        // Lisvus divides deep-blue Adena by RateDropItems before applying RateDropAdena.
-        // This keeps a shared high-rate preset from cancelling the retail penalty.
-        if ((group.items || []).some((item) => Number(item.selfId) === 57)) {
-            rate = current.drop > 0 ? rate / current.drop : 0;
-        }
-    }
-
-    const roll = rollGroup(group.overall, rate, rng, rule.minimumChance);
-    // Lisvus applies the Deep Blue modifier to categorized normal-drop chance,
-    // but still calculates a selected item's high-rate quantity from its base rate.
-    const amountRate = rule.active && kind === 'drop' ? baseRate : rate;
-    return { ...roll, amountMultiplier: amountMultiplier(group.overall, amountRate), itemRate: baseRate, rule };
+    const rate = groupRate(group, kind);
+    const roll = rollGroup(group.overall, rate, rng, 0);
+    return { ...roll, amountMultiplier: amountMultiplier(group.overall, rate), itemRate: rate };
 }
 
 function scaleAmount(amount, amountMultiplier, rng = Math.random) {
@@ -255,8 +195,6 @@ module.exports = {
     expectedDropAmount,
     selectDropItem,
     rollDropAmount,
-    deepBlueRule,
-    deepBlueActive,
     rewardGroupRoll,
     scaleAmount
 };

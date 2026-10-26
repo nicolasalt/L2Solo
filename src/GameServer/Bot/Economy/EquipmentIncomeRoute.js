@@ -3,7 +3,7 @@
 let SpotEconomics = null;
 
 // Only economic errands may deliberately hunt below the ordinary XP band.
-// Deep-blue drop/spoil penalties still apply in the native reward facts.
+// Lower monsters drop in full: the server has no Deep Blue penalty.
 // Clan warehouse custody does not change a member's ordinary earning routes.
 function economicHunt(state) {
     return invoke('GameServer/Bot/AI/PersonalGearProgression').adventurer(state)

@@ -191,9 +191,8 @@ const RULES = {
     4713: { skillType: HEAL, trait: 'heal', target: 'self', isMagic: true, ssBoost: 1, castRange: -1 },
     4717: { skillType: HEAL, trait: 'heal', target: 'owner', isMagic: true, ssBoost: 1, castRange: 600 },
     4718: { skillType: HEAL, trait: 'heal', target: 'owner', isMagic: true, ssBoost: 1, castRange: 600 },
-    // Native C4 raid-boss guards. These are applied by RaidCurse at the
-    // combat boundary, but keeping the sourced skill semantics here preserves
-    // the canonical skill ids for packets/effect tooling.
+    // Native C4 raid-boss guards (Raid Curse, Petrification). This server
+    // never applies them; the semantics stay for the canonical skill ids.
     4215: { skillType: EFFECT, trait: 'silence', effect: 'silence', effectType: 'debuff', target: 'enemy', baseLandRate: 100, dispellable: false, stats: { physicalMute: true, magicMute: true } },
     4515: { skillType: EFFECT, trait: 'paralyze', effect: 'paralyze', effectType: 'debuff', target: 'enemy', baseLandRate: 100, dispellable: false },
     1001: {

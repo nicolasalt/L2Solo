@@ -118,8 +118,8 @@ function combatCapable(member, profile, readinessCache = null) {
         || number(readiness.weaponRank) >= Math.max(0, requiredRank - (support ? 1 : 0)));
     // The first observed bot raid kill was made by a veteran party whose raw
     // item grades were below the boss grade, but whose effective levels were
-    // safely above it. Preserve that proven route while the +8 curse ceiling
-    // in `availableMember` still prevents trivial over-level farming.
+    // safely above it. Preserve that proven route while the +8 ceiling in
+    // `availableMember` still keeps clans off trivial over-level farming.
     const veteranCompensation = number(readiness.effectiveLevel, member?.level)
         >= number(profile?.avgLevel) + EFFECTIVE_LEVEL_GEAR_COMPENSATION;
     return readiness.hasWeapon

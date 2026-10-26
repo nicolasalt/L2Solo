@@ -96,8 +96,7 @@ function groupsFor(reward) {
 // Analytical expectation of the native group roll, category selection and
 // high-rate amount overflow. One pass per group; no random draws or combat.
 function npcValue(entry, killerLevel) {
-    const rule = Rates.deepBlueRule({ npcLevel: entry.level, killerLevel });
-    const key = `${entry.npcId}:${entry.reward?.selfId || 0}:${rule.active ? rule.penaltyPercent : 0}`;
+    const key = `${entry.npcId}:${entry.reward?.selfId || 0}`;
     let held = npcValues.get(key);
     if (held) return held;
     held = { adena: 0, drop: 0, spoil: 0 };
@@ -113,7 +112,7 @@ function npcValue(entry, killerLevel) {
     return held;
 }
 
-// Spawn-weighted rewards per kill. The NPC's own level controls Deep Blue;
+// Spawn-weighted rewards per kill (no level drop penalty on this server);
 // the spoiler's learned skill controls landing, independently of the killer.
 function value(spot, killerLevel, { spoilSkillLevel = 0, spoilerLevel = killerLevel } = {}) {
     if (!spot || typeof spot !== 'object') return null;

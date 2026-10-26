@@ -87,40 +87,31 @@ try {
     assert(BotPartyOrders.isLeaderOf(leader));
     assert.deepStrictEqual(BotPartyOrders.companions(leader).map((member) => member.actor.fetchName()), ['Low', 'High', 'Mid']);
 
-    // Attack the raid boss: the cursed member (more than 8 above level 25) is
-    // named and gets no order; the others engage and leave their hold.
+    // Attack the raid boss: there is no raid curse, so every member engages,
+    // however far above level 25, and leaves its hold.
     const result = BotPartyOrders.handleChat(leader, 'attack the boss');
     assert.strictEqual(result.handled, true);
     assert.strictEqual(result.ok, true);
-    assert.strictEqual(result.affected, 2);
+    assert.strictEqual(result.affected, 3);
     assert.strictEqual(BotPartyOrders.orderedTargetId(members[0]), 500);
-    assert.strictEqual(BotPartyOrders.orderedTargetId(members[1]), null, 'a cursed bot gets no attack order');
+    assert.strictEqual(BotPartyOrders.orderedTargetId(members[1]), 500, 'a high-level bot fights a low raid boss');
     assert.strictEqual(BotPartyOrders.orderedTargetId(members[2]), 500);
     assert.strictEqual(members[2].botStay, false, 'an attack order ends a hold');
     assert.strictEqual(told.length, 1, 'one bot answers for the party');
-    assert.match(told[0].text, /Engaging Pan Dryad/);
-    assert.match(told[0].text, /High is more than 8 levels above Pan Dryad \(level 25\)/);
+    assert.strictEqual(told[0].text, 'Engaging Pan Dryad.');
 
-    // The order lifts raid safety for that boss, never the curse.
+    // The order lifts raid safety for that boss.
     assert.strictEqual(BotPartyOrders.allowsRaidTarget(members[0], boss), true);
-    assert.strictEqual(BotPartyOrders.allowsRaidTarget(members[1], boss), false);
+    assert.strictEqual(BotPartyOrders.allowsRaidTarget(members[1], boss), true);
 
-    // engage_raid lets an uncursed bot fight a raid boss without an order.
+    // engage_raid lets a bot fight a raid boss without an order.
     delete members[0].leaderAttackOrder;
     assert.strictEqual(BotPartyOrders.allowsRaidTarget(members[0], boss), false);
     HotBotPolicyOverlay.set(members[0], { overrides: ['engage_raid'] }, { ownerId: 1 });
     assert.strictEqual(BotPartyOrders.allowsRaidTarget(members[0], boss), true);
     HotBotPolicyOverlay.clear(members[0]);
 
-    // The curse warning fires once per boss, from a cursed member.
-    told.length = 0;
-    delete leader.raidCurseWarning;
-    assert.strictEqual(BotPartyOrders.warnRaidCurse(leader, boss), true);
-    assert.strictEqual(BotPartyOrders.warnRaidCurse(leader, boss), false, 'no repeat warning for the same boss');
-    assert.strictEqual(told[0].from, 'High');
-    assert.strictEqual(told[0].party, true);
-
-    // An ordinary mob: no curse, every companion attacks.
+    // An ordinary mob: every companion attacks.
     told.length = 0;
     leader.actor.fetchDestId = () => 600;
     const mobAttack = BotPartyOrders.handleChat(leader, 'attack');

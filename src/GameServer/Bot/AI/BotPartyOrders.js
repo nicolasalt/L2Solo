@@ -8,7 +8,6 @@ const NpcObjectIndex = require('../../World/NpcObjectIndex');
 // An attack order outlives one fight only briefly: it ends when the target
 // dies, and otherwise after this long without a new order.
 const ATTACK_ORDER_TTL_MS = 3 * 60 * 1000;
-const CURSE_WARNING_COOLDOWN_MS = 10 * 60 * 1000;
 const MAX_FAST_PATH_WORDS = 7;
 
 const GROUP = '(?:(?:all|everyone|everybody|guys|party|team|bots|companions|you all|y\'?all)[,!.:\\s]+)?';
@@ -87,10 +86,6 @@ function aliveNpc(id) {
     return npc;
 }
 
-function raidCurse() {
-    return invoke('GameServer/RaidBoss/RaidCurse');
-}
-
 function raidSafety() {
     return invoke('GameServer/Bot/AI/BotRaidSafety');
 }
@@ -100,10 +95,6 @@ function bossFor(npc) {
     const Safety = raidSafety();
     if (!npc || !Safety.isProtectedRaidEntity(npc)) return null;
     return Safety.raidBossFor?.(npc) || npc;
-}
-
-function cursed(session, boss) {
-    return !!boss && raidCurse().isAboveRaidThreshold(session.actor, boss);
 }
 
 function wake(session) {
@@ -134,51 +125,16 @@ function orderedTargetId(session, now = Date.now()) {
     return attackOrder(session, now)?.targetId || null;
 }
 
-// An attack order lifts raid safety for that raid, never the C4 raid curse.
+// An attack order lifts raid safety for that raid.
 function allowsRaidTarget(session, target) {
     const boss = bossFor(target);
-    if (!boss || cursed(session, boss)) return false;
+    if (!boss) return false;
     const HotBotPolicyOverlay = invoke('GameServer/Bot/AI/HotBotPolicyOverlay');
     if (HotBotPolicyOverlay.hasOverride(session, 'engage_raid')) return true;
     const order = attackOrder(session);
     if (!order) return false;
     const orderedBoss = bossFor(aliveNpc(order.targetId));
     return !!orderedBoss && Number(orderedBoss.fetchId()) === Number(boss.fetchId());
-}
-
-function cursedNames(members, boss) {
-    return members.filter((member) => cursed(member, boss)).map((member) => name(member.actor));
-}
-
-function curseLine(boss, blocked, total) {
-    const level = Number(boss.fetchLevel?.() || 0);
-    const who = blocked.length === total ? 'All of us are' : `${blocked.join(', ')} ${blocked.length === 1 ? 'is' : 'are'}`;
-    return `${who} more than 8 levels above ${name(boss)} (level ${level}). The raid curse silences or petrifies us if we fight it, so ${blocked.length === total ? 'we' : 'they'} can't help here.`;
-}
-
-function partySay(session, text) {
-    if (!text) return false;
-    return invoke('GameServer/Bot/BotManager').botPartySay(session, text);
-}
-
-// One warning per boss while the leader goes for a raid boss the party
-// cannot fight. Called from the companion ticks, so it fires the moment the
-// leader targets or engages, before anyone dies.
-function warnRaidCurse(leaderSession, boss, now = Date.now()) {
-    if (!leaderSession?.actor || !boss) return false;
-    const previous = leaderSession.raidCurseWarning;
-    // Every companion tick asks; a recent answer for this boss is final.
-    if (previous?.bossId === Number(boss.fetchId()) && now - Number(previous.at || 0) < CURSE_WARNING_COOLDOWN_MS) return false;
-    const members = companions(leaderSession);
-    const blocked = cursedNames(members, boss);
-    if (!blocked.length) {
-        // Nobody is cursed: look again in a few seconds (levels and roster change).
-        leaderSession.raidCurseWarning = { bossId: Number(boss.fetchId()), at: now - CURSE_WARNING_COOLDOWN_MS + 5000 };
-        return false;
-    }
-    leaderSession.raidCurseWarning = { bossId: Number(boss.fetchId()), at: now };
-    const speaker = members.find((member) => cursed(member, boss)) || members[0];
-    return partySay(speaker, curseLine(boss, blocked, members.length));
 }
 
 function spokesperson(members) {
@@ -188,9 +144,8 @@ function spokesperson(members) {
 function attack(leaderSession, members, options = {}) {
     const target = aliveNpc(options.targetId || leaderSession.actor.fetchDestId?.());
     if (!target) return { ok: false, reason: 'no_attack_target', reply: 'Target something first and I will go.' };
-    const boss = bossFor(target);
     const now = Date.now();
-    const able = members.filter((member) => !member.actor.isDead?.() && !cursed(member, boss));
+    const able = members.filter((member) => !member.actor.isDead?.());
     able.forEach((member) => {
         member.leaderAttackOrder = { targetId: Number(target.fetchId()), at: now, expiresAt: now + ATTACK_ORDER_TTL_MS };
         member.botStay = false;
@@ -208,16 +163,8 @@ function attack(leaderSession, members, options = {}) {
     if (PartyCompanionService.getSettings(leaderSession).combatMode === 'passive') {
         PartyCompanionService.updateSettings(leaderSession, { combatMode: 'assist' });
     }
-    const blocked = boss ? cursedNames(members, boss) : [];
-    if (boss && blocked.length) leaderSession.raidCurseWarning = { bossId: Number(boss.fetchId()), at: now };
-    if (!able.length) {
-        return { ok: false, reason: blocked.length ? 'raid_curse' : 'no_party_companions',
-            reply: blocked.length ? curseLine(boss, blocked, members.length) : 'Nobody is able to fight right now.' };
-    }
-    const reply = blocked.length
-        ? `Engaging ${name(target)}. ${curseLine(boss, blocked, members.length)}`
-        : `Engaging ${name(target)}.`;
-    return { ok: true, reason: 'attack_ordered', affected: able.length, targetId: target.fetchId(), reply };
+    if (!able.length) return { ok: false, reason: 'no_party_companions', reply: 'Nobody is able to fight right now.' };
+    return { ok: true, reason: 'attack_ordered', affected: able.length, targetId: target.fetchId(), reply: `Engaging ${name(target)}.` };
 }
 
 function clearAttackOrders(members) {
@@ -357,6 +304,5 @@ module.exports = {
     isLeaderOf,
     orderedTargetId,
     parse,
-    run,
-    warnRaidCurse
+    run
 };

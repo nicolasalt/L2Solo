@@ -339,7 +339,7 @@ try {
         f.boss.destId = f.tank.actor.fetchId(); f.tick(f.damage);
         f.damage.actor.level = 49; f.damage.actor.hitting = false;
         f.tick(f.damage);
-        assert.equal(f.damage.lastDecision.action, 'raid_level_ineligible', 'overlevel bots must not attack or support this raid');
+        assert.notEqual(f.damage.lastDecision.action, 'raid_level_ineligible', 'an overlevel bot fights the raid (no raid curse)');
         f.damage.actor.level = 40;
         f.tank.actor.dead = true; f.tank.actor.hp = 0;
         const escaped = [];

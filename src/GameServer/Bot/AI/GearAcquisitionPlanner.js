@@ -2263,18 +2263,16 @@ function sourceFactRulesFor(entries, itemId, killerLevel, ratesKey, economicLowe
     return rules;
 }
 
-// A drop yield depends only on the reward, the item and the deep-blue level
-// penalty: keep it as a number pair per rate profile. Craft routes evaluate
-// many materials, so the bounded source lists above are rebuilt often; this
-// keeps a rebuild from recomputing every reward roll.
-// Without a deep-blue penalty (every fact the hunt band admits) the pair is
-// keyed by numbers, not a five-part string: the same bound, a cheaper read.
+// A drop yield depends only on the reward and the item (the server has no
+// level drop penalty): keep it as a number pair per rate profile. Craft
+// routes evaluate many materials, so the bounded source lists above are
+// rebuilt often; this keeps a rebuild from recomputing every reward roll.
+// Ordinary ids are keyed by numbers, not a string: the same bound, a cheaper read.
 const PLAIN_YIELD_ITEMS = 2 ** 20;
 function dropYieldFor(reward, itemId, kind, npcLevel, killerLevel, ratesKey) {
     const npcId = Number(reward.selfId), item = Number(itemId);
     if ((kind === 'drop' || kind === 'spoil') && Number.isInteger(npcId) && npcId >= 0 && npcId < 2 ** 31
-        && Number.isInteger(item) && item >= 0 && item < PLAIN_YIELD_ITEMS
-        && !ProgressionRates.deepBlueActive(npcLevel, killerLevel)) {
+        && Number.isInteger(item) && item >= 0 && item < PLAIN_YIELD_ITEMS) {
         if (sourceIndexCache.plainRatesKey !== ratesKey) {
             sourceIndexCache.plainYields = new Map();
             sourceIndexCache.plainRatesKey = ratesKey;
@@ -2289,9 +2287,7 @@ function dropYieldFor(reward, itemId, kind, npcLevel, killerLevel, ratesKey) {
         }
         return value;
     }
-    const rule = ProgressionRates.deepBlueRule({ npcLevel, killerLevel });
-    const penalty = rule.active ? Math.min(100, rule.penaltyPercent) : 0;
-    const key = `${ratesKey}:${reward.selfId}:${itemId}:${kind}:${penalty}`;
+    const key = `${ratesKey}:${reward.selfId}:${itemId}:${kind}`;
     let value = sourceIndexCache.yields.get(key);
     if (!value) {
         value = itemDropYield(reward, itemId, kind, { npcLevel, killerLevel });

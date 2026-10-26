@@ -187,18 +187,6 @@ async function run() {
     assert((await Lifecycle.cooldown(party.partyId, 'test', { ignoreVisibility: true })).ok);
     const recoveryPartyId = party.partyId;
 
-    party = await createParty([21, 22], {
-        objective: { sourceKind: 'raid', raidBoss: true, raidBossTemplateId: 999999,
-            npcId: 999999, sourceLevel: 10 }
-    });
-    const unsafeRaidActivation = await Lifecycle.activate(party.partyId);
-    assert.strictEqual(unsafeRaidActivation.ok, false);
-    assert.strictEqual(unsafeRaidActivation.reason, 'party_not_ready');
-    assert.match(unsafeRaidActivation.detail, /^member_(21|22)_raid_level$/,
-        'hot activation must reject a synthetic or stale raid roster that would receive Raid Curse');
-    assert([21, 22].every(id => Life.cachedState(id).phase === 'cold'),
-        'rejected overlevel raid members must remain in cold simulation');
-
     party = await createParty([18, 19, 20], {
         objective: { sourceKind: 'raid', raidBoss: true, raidBossTemplateId: 10131, npcId: 10131 },
         raidEncounter: { status: 'active', bossTemplateId: 10131, hp: 400, maxHp: 1000,

@@ -11,8 +11,7 @@ const ratio = (actor, vital) => Number(actor[`fetch${vital}`]?.())
 
 function speakers(owner, boss) {
     return Safety.playerPartySessions(owner).filter(member => member !== owner
-        && Threats.alive(member.actor) && Threats.distance(member.actor, boss) <= 1800
-        && !invoke('GameServer/RaidBoss/RaidCurse').isAboveRaidThreshold(member.actor, boss));
+        && Threats.alive(member.actor) && Threats.distance(member.actor, boss) <= 1800);
 }
 
 function choose(members, state) {

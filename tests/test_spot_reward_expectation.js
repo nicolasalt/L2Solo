@@ -27,24 +27,23 @@ try {
     Data.npcRewards = [...Data.npcRewards, reward(lower), reward(higher)];
     Data.items = [...Data.items, { selfId: itemId, template: { price: 4, kind: 'Other.Material' } }];
     process.env.L2NODE_PROGRESSION_RATE = 'x1';
-    close(Rewards.value(blue, 26).adena, 70, 'no drop penalty through eight levels');
-    close(Rewards.value(blue, 27).adena, 70 * .91 / 3, 'the NPC level, not avgLevel 99, activates gap-nine penalty');
-    close(Rewards.value(blue, 33).adena, 70 * .37 / 3, 'gap-fifteen native Adena');
-    close(Rewards.value(blue, 33).drop, 20 * .37 / 3, 'gap-fifteen native normal drop');
+    // No Deep Blue drop penalty: fifteen levels above, the rewards are whole.
+    close(Rewards.value(blue, 26).adena, 70, 'eight levels above');
+    close(Rewards.value(blue, 33).adena, 70, 'fifteen levels above: full Adena');
+    close(Rewards.value(blue, 33).drop, 20, 'fifteen levels above: full normal drop');
     assert.equal(Rewards.value(blue, 33).spoil, 0, 'no learned Spoil means no spoil income');
     const landing = Formulas.spoilSuccessChance({ skillId: 254, skillLevel: 1, attackerLevel: 33, targetLevel: 18 });
-    close(Rewards.value(blue, 33, { spoilSkillLevel: 1 }).spoil, 2 * .37 / 3 * landing,
-        'spoil includes both the reward penalty and native skill landing');
+    close(Rewards.value(blue, 33, { spoilSkillLevel: 1 }).spoil, 2 * landing,
+        'spoil is only scaled by native skill landing');
     const lo = Rewards.value(blue, 33), hi = Rewards.value(near, 33), mix = Rewards.value(mixed, 33);
     for (const key of ['adena', 'drop', 'spoil']) close(mix[key], (lo[key] * 3 + hi[key]) / 4,
         'each NPC gets its own penalty before spawn-weighted aggregation');
 
     process.env.L2NODE_PROGRESSION_RATE = 'x50';
     const highRate = Rewards.value(blue, 33, { spoilSkillLevel: 1 });
-    close(highRate.adena, .7 * .37 / 3 * 3500, 'high-rate Adena chance divides by drop rate, amount retains base rate');
-    close(highRate.drop, 1000, 'normal drop chance saturates while base-rate quantity survives Deep Blue');
-    close(highRate.spoil, 2 * (50 * .37 / 3) * landing, 'spoil quantity uses its penalized rate');
-    assert.notEqual(highRate.drop, lo.drop * 50, 'an x1 reward curve cannot predict saturated high-rate loot');
+    close(highRate.adena, 3500, 'high-rate Adena saturates its chance and scales its amount');
+    close(highRate.drop, 1000, 'normal drop chance saturates');
+    close(highRate.spoil, 2 * 50 * landing, 'spoil quantity uses the full rate');
 
     // Same combat measurements, now backed by concrete native rewards.
     Table.useFile(path.join(__dirname, 'fixtures/spot_table.json'));

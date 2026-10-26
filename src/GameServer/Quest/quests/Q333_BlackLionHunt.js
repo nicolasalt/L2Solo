@@ -334,15 +334,12 @@ module.exports = {
         if (!drop) return;
         const [wanted, allow, proofChance, boxChance] = drop;
         if (!allow || part(state) !== wanted) return;
-        const mobLevel = Number(npc.fetchLevel?.() ?? 0);
-        const playerLevel = Number(state.session.actor.fetchLevel());
-        // A character eight levels above the trophy kills it sloppily: proofs and
-        // boxes fall at a third of the rate.
-        const scale = playerLevel - mobLevel > 8 ? 1 / 3 : 1;
+        // No level penalty: a high-level character gets proofs and boxes at
+        // the full rate.
         const roll1 = Math.floor(Math.random() * 101);
         const roll2 = Math.floor(Math.random() * 101);
-        const proof = roll1 < proofChance * scale ? drop[4] : null;
-        const box = roll2 < boxChance * scale ? 1 : 0;
+        const proof = roll1 < proofChance ? drop[4] : null;
+        const box = roll2 < boxChance ? 1 : 0;
         const gives = [];
         if (proof) gives.push([proof, 1]);
         if (box) gives.push([CARGO_BOX, 1]);

@@ -246,11 +246,6 @@ function readinessReason(party, states, timestamp = Date.now()) {
     if (Roster.markerFor(party) && !Roster.held(party)
         && !Roster.exact(states.map(state => state.characterId), Roster.markerFor(party).memberIds)) return 'raid_roster_incomplete';
     if (party.stats?.travel) return 'party_traveling';
-    const objective = party.stats?.objective;
-    const unsafeRaidMember = states.find((state) => (
-        !require('./ClanEquipmentPartyPolicy').raidLevelAllowed(state, objective)
-    ));
-    if (unsafeRaidMember) return `member_${unsafeRaidMember.characterId}_raid_level`;
     const continuingRaid = raidObjective(party) && party.stats?.raidEncounter?.status === 'active'
         && !!party.stats.raidEncounter.encounter;
     const casualties = states.filter(s => !(s.vitals.hp > 0));

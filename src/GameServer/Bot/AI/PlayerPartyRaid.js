@@ -25,10 +25,6 @@ function hold(session, bot, action, target, now) {
     return true;
 }
 
-function levelAllowed(actor, boss) {
-    return !invoke('GameServer/RaidBoss/RaidCurse').isAboveRaidThreshold(actor, boss);
-}
-
 function retreat(session, bot, owner, raid, boss, members, now) {
     invoke('GameServer/Bot/AI/PartyPulling').cancel(owner);
     // Wait outside the encounter; keeping the boss selected cannot silently
@@ -71,8 +67,7 @@ function tick(session, bot, Generics, AI, now = Date.now()) {
             ? owner.actor.fetchId() : raid.openerId;
     }
     const mainTank = allMembers.find(member => Number(member.actor.fetchId()) === Number(raid.mainTankId));
-    const members = allMembers.filter(member => Threats.alive(member.actor)
-        && (member === owner || levelAllowed(member.actor, boss)));
+    const members = allMembers.filter(member => Threats.alive(member.actor));
     if (raid.phase !== 'opening' && (!mainTank || !Threats.alive(mainTank.actor))) {
         const replacement = members.find(member => member !== owner && Roles.inferRole(member.actor) === 'tank'
             && Number(boss.fetchDestId?.()) === Number(member.actor.fetchId()));
@@ -80,11 +75,6 @@ function tick(session, bot, Generics, AI, now = Date.now()) {
         else raid.phase = 'retreat';
     }
     if (raid.phase === 'retreat') return retreat(session, bot, owner, raid, boss, allMembers, now);
-    if (!levelAllowed(bot, boss)) {
-        invoke('GameServer/Bot/AI/BotPartyOrders').warnRaidCurse(owner, boss, now);
-        Tactics.stop(session, bot);
-        return hold(session, bot, 'raid_level_ineligible', boss, now);
-    }
     const assignedTank = members.find(member => Number(member.actor.fetchId()) === Number(raid.mainTankId));
     if (!assignedTank) return hold(session, bot, 'raid_wait_tank', boss, now);
 
@@ -183,4 +173,4 @@ function tick(session, bot, Generics, AI, now = Date.now()) {
     return true;
 }
 
-module.exports = { tick, levelAllowed };
+module.exports = { tick };

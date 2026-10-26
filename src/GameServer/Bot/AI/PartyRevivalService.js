@@ -259,16 +259,12 @@ function tick(session, leaderSession, Generics) {
         // Background parties use learned resurrection. Do not inherit the
         // player-companion fallback that manufactures a scroll cast.
         .filter(s => !background || learnedResurrectionSkills(s.actor).length > 0);
-    const raidBoss = leaderSession.partyRaidEngagement && invoke('GameServer/Bot/AI/BotRaidSafety')
-        .raidBossByObjectId(leaderSession.partyRaidEngagement.bossId);
-    const eligibleProviders = availableProviders.filter(s => !raidBoss
-        || !invoke('GameServer/RaidBoss/RaidCurse').isAboveRaidThreshold(s.actor, raidBoss));
-    const targetSession = rescueTargets.filter(target => eligibleProviders.some(provider => withinReviveApproach(provider.actor, target.actor))).sort((a, b) => (
+    const targetSession = rescueTargets.filter(target => availableProviders.some(provider => withinReviveApproach(provider.actor, target.actor))).sort((a, b) => (
         Number(b === leaderSession) - Number(a === leaderSession) ||
         Number(a.actor.fetchId()) - Number(b.actor.fetchId())
     ))[0];
     if (!targetSession) return { handled: false, dead };
-    const providers = eligibleProviders
+    const providers = availableProviders
         .filter((memberSession) => withinReviveApproach(memberSession.actor, targetSession.actor))
         .filter((memberSession) => !memberSession.actor.state?.fetchCasts?.())
         .filter(s => !(background || combat.active) || invoke('GameServer/Effects/EffectRestrictions').canCast(s.actor))

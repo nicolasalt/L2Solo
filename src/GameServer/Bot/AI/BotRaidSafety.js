@@ -141,10 +141,9 @@ function compareScores(a, b) {
     return 0;
 }
 
-function selectRaidOpener(leaderSession, boss = null) {
+function selectRaidOpener(leaderSession) {
     return playerPartySessions(leaderSession)
         .filter((session) => session !== leaderSession && isOnlineCompanion(session, leaderSession))
-        .filter(session => !boss || !invoke('GameServer/RaidBoss/RaidCurse').isAboveRaidThreshold(session.actor, boss))
         .sort(compareScores)[0] || null;
 }
 
@@ -195,7 +194,7 @@ function raidHasPartyCombat(leaderSession, raid) {
 }
 
 function startPlayerPartyRaid(leaderSession, boss, target, now) {
-    const opener = selectRaidOpener(leaderSession, boss);
+    const opener = selectRaidOpener(leaderSession);
     const mainTank = invoke('GameServer/Bot/AI/BotRoles').inferRole(leaderSession.actor) === 'tank'
         ? leaderSession : opener;
     leaderSession.backgroundRaidTactics = undefined;
@@ -336,7 +335,7 @@ function syncPlayerPartyRaid(leaderSession, now = Date.now()) {
         const openerStillAvailable = playerPartySessions(leaderSession)
             .some((session) => objectId(session.actor) === Number(raid.openerId || 0) && isOnlineCompanion(session, leaderSession));
         if (!openerStillAvailable && !activeCombat) {
-            const replacement = selectRaidOpener(leaderSession, existingBoss || selectedBoss);
+            const replacement = selectRaidOpener(leaderSession);
             if (Number(raid.mainTankId) === Number(raid.openerId)) raid.mainTankId = objectId(replacement?.actor);
             raid.openerId = objectId(replacement?.actor);
         }
@@ -428,10 +427,8 @@ function clearTarget(session, bot, target) {
 
 function retreat(session, bot, threat, options = {}) {
     if (!session || !bot || !isProtectedRaidEntity(threat)) return false;
-    // The leader's no-retreat override keeps a bot in the fight, except
-    // where the raid curse would lock it out anyway.
-    if (invoke('GameServer/Bot/AI/HotBotPolicyOverlay').hasOverride(session, 'no_retreat')
-        && !invoke('GameServer/RaidBoss/RaidCurse').isAboveRaidThreshold(bot, raidBossFor(threat))) return false;
+    // The leader's no-retreat override keeps a bot in the fight.
+    if (invoke('GameServer/Bot/AI/HotBotPolicyOverlay').hasOverride(session, 'no_retreat')) return false;
     // The generic hunting/resting safety net also sees recent raid hits.  An
     // autonomous clan member must not reinterpret its own authorized boss or
     // minion as an accidental raid pull and run away a tick after the main

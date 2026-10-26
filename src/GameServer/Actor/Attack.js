@@ -10,7 +10,6 @@ const EffectStore    = invoke('GameServer/Effects/EffectStore');
 const C4EquipmentItemSkills = invoke('GameServer/Items/C4EquipmentItemSkills');
 const WeaponSA = invoke('GameServer/Items/C4WeaponSA');
 const ShotStock = invoke('GameServer/Inventory/ShotStock');
-const RaidCurse = invoke('GameServer/RaidBoss/RaidCurse');
 const ChargeLifecycle = invoke('GameServer/Skills/ChargeLifecycle');
 const AttackRange = invoke('GameServer/Actor/AttackRange');
 const HotPartyCastTracker = invoke('GameServer/Bot/AI/HotPartyCastTracker');
@@ -205,19 +204,10 @@ class Attack {
                 return;
             }
 
-            if (RaidCurse.normalAttackBlocked(session, actor, creature)) {
-                if (usedSoulshot) {
-                    actor.soulshotLoaded = false;
-                }
-                releaseBowMovement();
-                return;
-            }
-
             if (usedSoulshot) actor.soulshotLoaded = false;
 
             hits.forEach((entry, index) => {
                 const target = entry.target;
-                if (index > 0 && RaidCurse.normalAttackBlocked(session, actor, target)) return;
                 if (target?.state?.fetchDead?.() || target?.isDead?.()) return;
                 // Check every melee victim again at impact, including polearm
                 // secondary targets. Already-launched arrows keep travelling.
@@ -416,10 +406,6 @@ class Attack {
         this.payRemoteCast(session, actor, skill, { magicSkill, launchLead, executionTargets, mpCost });
 
         const shotState = this.captureShotState(actor);
-        if (!selfEffectOnly && executionTargets.length > 0 && RaidCurse.skillBlocked(session, actor, executionTargets, skill)) {
-            this.abandonCursedRemoteCast(session, actor, creature, skill, magicSkill);
-            return;
-        }
 
         // A sonic/force charge belongs to the cast, not to each target of
         // an area skill. Consume it once after the cast has survived all
@@ -466,23 +452,6 @@ class Attack {
             actor.setHp(Math.max(1, actor.fetchHp() - skill.fetchConsumedHp()));
         }
         actor.statusUpdateVitals(actor);
-    }
-
-    abandonCursedRemoteCast(session, actor, creature, skill, magicSkill) {
-        this.clearLoadedShot(actor, magicSkill);
-        actor.state.setCasts(false);
-        invoke('GameServer/Bot/AI/BotSupportPlanner').finishSupportCast(session, actor, skill);
-        invoke('GameServer/Bot/AI/BotPartyChat').cancelExpectedSkillResult(session, actor, creature, skill);
-
-        actor.automation.replenishVitals(actor);
-        if (invoke('GameServer/Bot/AI/PartyCompanionService').startQueuedGroundPickup(session)) {
-            return;
-        }
-        if (this.queue.name) {
-            this.dequeueEvent(session);
-            return;
-        }
-        return;
     }
 
     applyRemoteCastEffect(session, actor, target, skill, { corpseAreaCast, raidParty, shotState, magicSkill, selfEffectOnly, castWeapon }) {

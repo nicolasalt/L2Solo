@@ -18,8 +18,7 @@ const { CRYSTAL_IDS } = invoke('GameServer/Items/C4EnchantRules');
 // a monster drops (or, for the spoiler, spoils) the item, items per hour =
 // kills per hour from the spot table x the monster's share of the spot's
 // spawns x the expected amount per kill at the server's rate (the author's
-// itemDropYield, with the deep-blue rule at the level the table rates the
-// spot at). The spot with the most items per hour wins; its level is the
+// itemDropYield at the level the table rates the spot at). The spot with the most items per hour wins; its level is the
 // item's level.
 //
 // How long: the kills needed there, 1 / (share x amount per kill), at the

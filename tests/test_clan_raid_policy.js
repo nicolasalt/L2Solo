@@ -66,9 +66,9 @@ try {
     assert.equal(RaidPolicy.assessment({ members: conflicting }, profile).ready, false,
         'members committed to another party must not be borrowed for a raid');
 
-    const cursed = members.map((entry, index) => index === 0 ? { ...entry, level: 59 } : entry);
-    assert.equal(RaidPolicy.assessment({ members: cursed }, profile).ready, false,
-        'a required role above the raid curse ceiling must not make the roster ready');
+    const overlevel = members.map((entry, index) => index === 0 ? { ...entry, level: 59 } : entry);
+    assert.equal(RaidPolicy.assessment({ members: overlevel }, profile).ready, false,
+        'a required role far above the boss must not make the roster ready (no trivial farming)');
 
     const backedOff = members.map((entry, index) => index === 0 ? {
         ...entry,
