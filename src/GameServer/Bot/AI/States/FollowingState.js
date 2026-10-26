@@ -303,7 +303,9 @@ function beginCompanionTownErrand(session, bot, playerSession, errand) {
             ? `sell these resources to ${errand.target.name}`
             : errand.kind === 'sell_junk'
                 ? `sell my loot at ${errand.target.name}`
-                : 'restock my shots';
+                : errand.kind === 'draw_henna'
+                    ? `get a tattoo at ${errand.target.name}`
+                    : 'restock my shots';
     BotPartyChat.announce(session, {
         priority: 'informational',
         key: `town-errand:${bot.fetchId()}:${errand.kind}`,
@@ -2121,6 +2123,11 @@ FollowingState.beginLeaderSellTrip = function beginLeaderSellTrip(session, playe
     if (!target) return null;
     beginCompanionTownErrand(session, bot, playerSession, { kind: 'sell_junk', target, leaderOrdered: true });
     return target;
+};
+
+// A town trip the leader ordered (a tattoo at the Symbol Maker): go, do it, come back.
+FollowingState.beginLeaderErrand = function beginLeaderErrand(session, playerSession, errand) {
+    return beginCompanionTownErrand(session, session.actor, playerSession, { ...errand, leaderOrdered: true });
 };
 
 module.exports = FollowingState;

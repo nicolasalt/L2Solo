@@ -290,6 +290,10 @@ function schema(allowedActions = BotAgentTools.ACTIONS, session = null) {
                 maxItems: 9,
                 description: 'buy_for_self / upgrade_gear: who does it: party member names, class names ("necromancers"), roles ("mages") or "everyone". Empty = this bot.'
             },
+            tattooName: {
+                type: 'string',
+                description: 'make_tattoo: the dye or its stats ("Greater Dye of INT (Int+2 Men-2)", "INT+2 MEN-2"); empty = any dye the bot carries.'
+            },
             itemName: {
                 type: 'string',
                 description: 'Item by name: for buy_for_self/fetch_resources a shop item ("D-grade spiritshot"), for give_resources/equip_candidate an item in bot.inventory.bag.'

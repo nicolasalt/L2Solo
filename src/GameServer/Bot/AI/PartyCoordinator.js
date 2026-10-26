@@ -17,7 +17,7 @@ const PLAN_ACTIONS = [
     'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule',
     'set_buff_targets', 'set_buff_policy', 'set_combat_stance', 'override_rule',
     'set_pull_policy', 'stop_pulling_and_return', 'assign_puller', 'unassign_puller',
-    'buy_for_self', 'cancel_shopping', 'open_buy_shop', 'close_buy_shop', 'sell_loot', 'fetch_resources', 'upgrade_gear', 'optimize_equipment', 'equip_candidate', 'list_safe_loadouts',
+    'buy_for_self', 'cancel_shopping', 'open_buy_shop', 'close_buy_shop', 'sell_loot', 'make_tattoo', 'fetch_resources', 'upgrade_gear', 'optimize_equipment', 'equip_candidate', 'list_safe_loadouts',
     'give_adena', 'give_resources', 'go_to'
 ];
 

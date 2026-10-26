@@ -70,7 +70,7 @@ const ACTIONS = [
     'go_to',
     'plan_steps',
     'set_buff_targets',
-    'cancel_shopping', 'open_buy_shop', 'close_buy_shop', 'sell_loot'
+    'cancel_shopping', 'open_buy_shop', 'close_buy_shop', 'sell_loot', 'make_tattoo'
 ];
 const NON_MUTATING_ACTIONS = new Set(['none', 'say', 'list_safe_loadouts', 'list_party_candidates']);
 
@@ -82,7 +82,7 @@ const PK_LOCKED_ACTIONS = new Set([
     'list_safe_loadouts', 'equip_candidate', 'optimize_equipment', 'list_party_candidates', 'request_player_join_party',
     'propose_trade', 'give_resources', 'offer_resources', 'update_trade_offer', 'cancel_trade',
     'quote_item', 'counter_offer', 'accept_price', 'decline_price', 'open_negotiated_trade',
-'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps', 'set_buff_targets', 'cancel_shopping', 'open_buy_shop', 'close_buy_shop', 'sell_loot'
+'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps', 'set_buff_targets', 'cancel_shopping', 'open_buy_shop', 'close_buy_shop', 'sell_loot', 'make_tattoo'
 ]);
 
 function clean(text) {
@@ -1535,6 +1535,51 @@ function sellLootForOne(context) {
         playerVisibleReply: `Selling ${sellable.length} item${sellable.length === 1 ? '' : 's'} at ${target.name || 'the merchant'}, back soon.` };
 }
 
+// "make a tattoo": the companion takes a dye it carries to the nearest
+// Symbol Maker and draws that symbol in a free slot, then comes back.
+function makeTattooForOne(context) {
+    const session = context.session, bot = session.actor, decision = context.decision;
+    const leader = partyLeaderFor(session);
+    if (!leader) return { applied: false, reason: 'not_a_party_companion' };
+    const Henna = invoke('GameServer/Henna/HennaService');
+    const slots = Array.isArray(session.hennas) ? session.hennas : [null, null, null];
+    if (slots.filter(Boolean).length >= Henna.availableSlots(session)) return { applied: false, reason: 'no_tattoo_slot' };
+    const dyeName = (symbol) => invoke('GameServer/Bot/AI/BotSupplyErrand').itemTemplate(symbol.dyeSelfId)?.template?.name || symbol.name;
+    const held = (symbol) => Number(bot.backpack?.fetchItemFromSelfId?.(symbol.dyeSelfId)?.fetchAmount?.() || 0);
+    const symbols = Henna.availableForClass(bot.fetchClassId?.()).filter((symbol) => !slots.includes(symbol.id));
+    // "int +2 men -2" reads as the dye's "(Int+2 Men-2)".
+    const wanted = String(decision.tattooName || decision.itemName || '').trim().replace(/\s*([+-])\s*(?=\d)/g, '$1');
+    let symbol;
+    if (wanted) {
+        const scored = symbols.map((candidate) => ({ candidate, score: nameResolver().score(wanted, dyeName(candidate)) }))
+            .filter((entry) => entry.score >= nameResolver().MIN_SCORE)
+            .sort((a, b) => b.score - a.score || held(b.candidate) - held(a.candidate));
+        symbol = scored.find((entry) => held(entry.candidate) >= entry.candidate.dyeAmount)?.candidate;
+        if (!symbol && scored.length) {
+            const best = scored[0].candidate;
+            return { applied: false, reason: 'missing_tattoo_dye', need: best.dyeAmount, dyeName: dyeName(best), have: held(best) };
+        }
+        if (!symbol) return { applied: false, reason: 'unknown_tattoo' };
+    } else {
+        symbol = symbols.find((candidate) => held(candidate) >= candidate.dyeAmount);
+        if (!symbol) return { applied: false, reason: 'no_tattoo_dye' };
+    }
+    if (Number(bot.backpack?.fetchTotalAdena?.() || 0) < symbol.price) return { applied: false, reason: 'cannot_afford' };
+    const station = invoke('GameServer/Bot/Economy/BotImprovementService').stationTarget(bot, { kind: 'henna' });
+    if (!station) return { applied: false, reason: 'no_symbol_maker_nearby' };
+    const tattooName = dyeName(symbol).replace(/^Greater Dye of |^Dye of /, '');
+    invoke('GameServer/Bot/AI/States/FollowingState').beginLeaderErrand(session, leader, {
+        kind: 'draw_henna', symbolId: symbol.id, tattooName,
+        target: { ...station, actorId: station.npcId }
+    });
+    return { applied: true, outcome: 'pending', reason: 'tattoo_trip_started',
+        playerVisibleReply: `Getting the ${tattooName} tattoo at ${station.name}, back soon.` };
+}
+
+function makeTattoo(context) {
+    return forEachNamedMember(context, makeTattooForOne, (result) => result.playerVisibleReply);
+}
+
 function sellLoot(context) {
     return forEachNamedMember(context, sellLootForOne, (result) => result.playerVisibleReply);
 }
@@ -1787,6 +1832,7 @@ function registerTools() {
         open_buy_shop: 'Sit down here with a private buy store so the leader can sell to it: items [{itemName, amount, price}] (price = Adena per unit). Following pauses until it is filled, closed, or the leader leaves.',
         close_buy_shop: 'Close the buy store and follow again.',
         sell_loot: 'Go to the nearest merchant now and sell everything unequipped it buys (loot, junk, spare scrolls and gear; never shots), then come back. forMembers as for buy_for_self.',
+        make_tattoo: 'Draw a tattoo (henna) at the nearest Symbol Maker with a dye the companion carries, then come back. tattooName: the dye or stats ("Greater Dye of INT (Int+2 Men-2)", "INT+2 MEN-2"); empty = the first one it has dye for. forMembers as for buy_for_self.',
         cancel_shopping: 'Take items (items/itemName; none = everything) off the shopping list still waiting for a later trip. A trip already under way finishes.',
         give_adena: 'Open a trade giving the leader adenaAmount Adena ("all" for everything but a 1,000 travel reserve). No cap.',
         go_to: 'Walk to the NPC or player named destinationName (within about 12,000 units) and wait there until called back.',
@@ -1801,7 +1847,7 @@ function registerTools() {
         'set_skill_priority', 'clear_skill_priority', 'set_combat_stance',
         'list_safe_loadouts', 'equip_candidate', 'optimize_equipment',
         'propose_trade', 'give_resources', 'fetch_resources', 'offer_resources', 'update_trade_offer', 'cancel_trade',
-'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps', 'set_buff_targets', 'cancel_shopping', 'open_buy_shop', 'close_buy_shop', 'sell_loot'
+'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps', 'set_buff_targets', 'cancel_shopping', 'open_buy_shop', 'close_buy_shop', 'sell_loot', 'make_tattoo'
     ]);
     const economyActions = new Set([
         'quote_item', 'counter_offer', 'accept_price', 'decline_price', 'open_negotiated_trade'
@@ -1853,7 +1899,8 @@ function registerTools() {
         cancel_shopping: cancelShopping,
         open_buy_shop: openBuyShop,
         close_buy_shop: closeBuyShop,
-        sell_loot: sellLoot
+        sell_loot: sellLoot,
+        make_tattoo: makeTattoo
     };
 
     ACTIONS.forEach((name) => {
@@ -1968,6 +2015,12 @@ function rejectionReply(result = {}) {
     switch (result.reason) {
         case 'skill_ambiguous': return `I know more than one skill like that.${alternativesText(result)}`;
         case 'missing_skill_name': return 'Which skill?';
+        case 'missing_tattoo_dye': return `I need ${result.need} ${result.dyeName} for that tattoo and have ${result.have}.`;
+        case 'no_tattoo_dye': return 'I carry no dye for a tattoo of my class.';
+        case 'no_tattoo_slot': return 'All my tattoo slots are taken.';
+        case 'unknown_tattoo': return 'I know no tattoo like that for my class.';
+        case 'no_symbol_maker_nearby': return 'There is no Symbol Maker in this town.';
+        case 'no_merchant_nearby': return 'I cannot find a merchant from here.';
         case 'skill_on_cooldown': return `${result.skillName || 'That skill'} is still on cooldown.`;
         case 'low_mp_for_skill': return `Not enough MP for ${result.skillName || 'that skill'} right now.`;
         case 'target_too_far': return `You are too far away for ${result.skillName || 'that skill'}. Come closer.`;

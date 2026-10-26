@@ -705,6 +705,15 @@ module.exports = {
             return;
         }
 
+        if (companionErrand?.kind === 'draw_henna') {
+            const drawn = invoke('GameServer/Henna/HennaService').drawSymbol(session, companionErrand.symbolId);
+            session.lastTradeSummary = drawn ? `drew ${companionErrand.tattooName}` : `could not draw ${companionErrand.tattooName}`;
+            invoke('GameServer/Bot/AI/BotPartyChat').announce(session, { priority: 'coordination', key: `tattoo:${bot.fetchId()}`,
+                templates: [drawn ? `Got my ${companionErrand.tattooName} tattoo.` : `Couldn't get the ${companionErrand.tattooName} tattoo.`] });
+            this.scheduleRestock(session, bot, Generics, BotAI);
+            return;
+        }
+
         if (companionErrand?.kind === 'mammon_unseal') {
             try {
                 await invoke('GameServer/Bot/AI/BotMammonUnseal').execute(session,bot,companionErrand);
