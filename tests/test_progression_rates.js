@@ -70,9 +70,19 @@ const madnessGroup = raidRewards.find((npc) => npc.selfId === 10378).rewards[1];
 const enchantWeaponD = madnessGroup.items.find((item) => item.selfId === 955);
 const rawEnchantChance = ProgressionRates.dropItemBaseChance(madnessGroup, enchantWeaponD);
 assert(Math.abs(rawEnchantChance - 38.3035) < 0.000001, 'Madness Beast EWD must reconstruct its sourced 38.3035% chance');
-assert.strictEqual(ProgressionRates.dropItemSelectionWeight(madnessGroup, enchantWeaponD, 10), 100, 'x10 item selection weight must saturate at 100%');
-assert.strictEqual(ProgressionRates.selectDropItem(madnessGroup, 10, () => 0), enchantWeaponD, 'the high-rate category selector must use balanced item weights');
-assert.strictEqual(ProgressionRates.selectDropItem(madnessGroup, 10, () => 0.4).selfId, 956, 'high-rate balancing must not retain the x1 EWD category share after its weight saturates');
+assert.strictEqual(ProgressionRates.dropItemChance(madnessGroup, enchantWeaponD, 10), 100, 'x10 lifts the EWD chance to 100% first');
+assert(Math.abs(ProgressionRates.dropAmountMultiplier(madnessGroup, enchantWeaponD, 10) - 3.83035) < 0.000001,
+    'only the rate beyond 100% multiplies the amount');
+// Beyond a 100% group chance every item rolls its own capped chance.
+const madnessDrops = ProgressionRates.rollDropGroup(madnessGroup, 10, () => 0).map(({ item }) => item.selfId);
+assert(madnessDrops.includes(955) && madnessDrops.includes(956), 'each item of a saturated group can drop');
+// "6-8 at 50%": x2 makes it 6-8 at 100%, x4 makes it 12-16 at 100%.
+const halfGroup = { overall: 50, items: [{ selfId: 1864, min: 6, max: 8, chance: 100 }] };
+assert.strictEqual(ProgressionRates.dropItemChance(halfGroup, halfGroup.items[0], 2), 100);
+assert.deepStrictEqual(ProgressionRates.dropAmountRange(halfGroup, halfGroup.items[0], 2), { min: 6, max: 8 });
+assert.deepStrictEqual(ProgressionRates.dropAmountRange(halfGroup, halfGroup.items[0], 4), { min: 12, max: 16 });
+assert.strictEqual(ProgressionRates.dropItemChance(halfGroup, halfGroup.items[0], 1), 50);
+assert.deepStrictEqual(ProgressionRates.rollDropGroup(halfGroup, 1, () => 0.6), [], 'x1 keeps the native 50%');
 assert.strictEqual(ProgressionRates.rollDropAmount(madnessGroup, enchantWeaponD, 10, () => 0.83036), 3, 'x10 EWD must produce three items when the 83.035% overflow roll misses');
 assert.strictEqual(ProgressionRates.rollDropAmount(madnessGroup, enchantWeaponD, 10, () => 0.83034), 4, 'x10 EWD must produce a fourth item when the 83.035% overflow roll hits');
 assert.deepStrictEqual(ProgressionRates.dropAmountRange(madnessGroup, enchantWeaponD, 10), { min: 3, max: 4 }, 'displayed high-rate range must match the runtime overflow roll');

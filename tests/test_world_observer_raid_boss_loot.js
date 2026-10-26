@@ -24,12 +24,16 @@ const Observer = invoke('WorldObserver/WorldObserverServer');
         // Greyclaw Kutus: compact [itemId, name, chance %, min, max] rows, most likely first.
         const kutus = x1.bosses['10001'];
         assert(kutus.length > 5);
-        assert.deepStrictEqual(kutus[0].slice(0, 2), [6576, 'Blessed Scroll: Enchant Armor (D)']);
+        const row = (table, itemId) => table.bosses['10001'].find((entry) => entry[0] === itemId);
+        // Boss gear floors: armor and jewelry 50%, weapons 10%.
+        assert.strictEqual(row(x1, 377)[2], 50, 'Scale Gaiters (26.5% natively) drops half the kills');
+        assert.strictEqual(row(x1, 69)[2], 10, 'Bastard Sword (4.1% natively) drops one kill in ten');
+        assert(row(x1, 6576)[2] < 50, 'a scroll keeps its native chance');
         assert(kutus.every(([, , chance], index) => chance > 0 && chance <= 100 && (index === 0 || chance <= kutus[index - 1][2])));
         // Each row names its category, so the table can list gear only.
         assert.strictEqual(kutus.find((row) => row[0] === 377)[5], 'armor', 'Scale Gaiters is armor');
         assert.strictEqual(kutus.find((row) => row[0] === 377)[6], 'd', 'Scale Gaiters is D grade');
-        assert(!['weapons', 'armor', 'jewelry'].includes(kutus[0][5]), 'an enchant scroll is not gear');
+        assert(!['weapons', 'armor', 'jewelry'].includes(row(x1, 6576)[5]), 'an enchant scroll is not gear');
         assert(JSON.stringify(x1).length < 200000, 'the whole table stays small');
 
         // Higher rates raise the chances (and the table follows the rate change).

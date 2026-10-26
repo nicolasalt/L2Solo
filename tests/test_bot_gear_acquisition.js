@@ -232,14 +232,16 @@ process.env.L2NODE_PROGRESSION_RATE = 'x1';
 const steelSourceAtX1 = GearAcquisitionPlanner.sourceForItem(1880, caveMaidenSpots, { level: 52 })[0];
 process.env.L2NODE_PROGRESSION_RATE = 'x50';
 const steelSourceAtX50 = GearAcquisitionPlanner.sourceForItem(1880, caveMaidenSpots, { level: 52 })[0];
-assert(Math.abs(steelSourceAtX50.expectedYield - 0.59402553) < 0.000001, 'high-rate material plans must include balanced selection and item-specific amount overflow');
-assert.strictEqual(Math.ceil(220 / steelSourceAtX50.expectedYield), 371, '220 Steel from Cave Maiden at x50 must use the native balanced yield');
+// x50 lifts Steel from about 1% to 51.24% at 1-3 each: 1.0248 per kill.
+assert(Math.abs(steelSourceAtX50.expectedYield - 1.02480324) < 0.000001, 'high-rate material plans use the capped chance and the amount beyond it');
+assert.strictEqual(Math.ceil(220 / steelSourceAtX50.expectedYield), 215, '220 Steel from Cave Maiden at x50');
 assert(steelSourceAtX50.expectedYield > steelSourceAtX1.expectedYield, 'source cache keys must preserve progression-rate changes for the same atlas');
 process.env.L2NODE_PROGRESSION_RATE = 'x10';
 const madnessBeast = DataCache.npcRewards.find((reward) => Number(reward.selfId) === 10378);
 const madnessEwd = GearAcquisitionPlanner.itemDropYield(madnessBeast, 955);
-assert(Math.abs(madnessEwd.chance - 0.3573994) < 0.000001, 'source planning must use the x10 balanced EWD selection chance');
-assert(Math.abs(madnessEwd.expectedYield - 1.3689649) < 0.000001, 'source planning must combine balanced selection with item-specific EWD overflow');
+// 38.3035% at x10: certain, with the remaining x3.83035 in the amount.
+assert(Math.abs(madnessEwd.chance - 1) < 0.000001, 'source planning lifts the EWD chance to 100% first');
+assert(Math.abs(madnessEwd.expectedYield - 3.83035) < 0.000001, 'source planning puts the rest of the rate in the amount');
 if (previousProgressionRate === undefined) delete process.env.L2NODE_PROGRESSION_RATE;
 else process.env.L2NODE_PROGRESSION_RATE = previousProgressionRate;
 

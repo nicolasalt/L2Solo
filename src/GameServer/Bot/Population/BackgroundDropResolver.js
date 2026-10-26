@@ -1,6 +1,7 @@
 const ItemTemplateIndex = require('../../Item/ItemTemplateIndex');
 const DataCache = invoke('GameServer/DataCache');
 const ProgressionRates = invoke('GameServer/ProgressionRates');
+const BossGearDrops = invoke('GameServer/Items/BossGearDrops');
 const NpcSkills = invoke('GameServer/Npc/NpcSkills');
 const SourceCatalog = require('../../Knowledge/SourceCatalog');
 
@@ -93,18 +94,20 @@ function rollRewardsForFight({ spot, killerLevel, npcSelfId = 0, rng = Math.rand
     const defeatedNpcLevel = sourceMobLevel(rewardData, spot, npcSelfId);
     const result = { adena: 0, items: [] };
     for (const group of rewardData.rewards || []) {
-        const groupRoll = ProgressionRates.rewardGroupRoll(group, 'drop', {
-            npcLevel: defeatedNpcLevel,
-            killerLevel: Number(killerLevel || 0)
-        }, rng);
-        if (!groupRoll.hit) continue;
-        const item = ProgressionRates.selectDropItem(group, groupRoll.itemRate, rng);
-        if (!item) continue;
-        const amount = ProgressionRates.rollDropAmount(group, item, groupRoll.itemRate, rng);
-        if (Number(item.selfId) === 57) {
-            result.adena += amount;
-        } else if (result.items.length < maxItems) {
-            const snapshot = itemSnapshot(item, amount, defeatedNpcLevel);
+        const rate = ProgressionRates.groupRate(group, 'drop');
+        for (const { item, amount } of ProgressionRates.rollDropGroup(group, rate, rng)) {
+            if (Number(item.selfId) === 57) {
+                result.adena += amount;
+            } else if (result.items.length < maxItems) {
+                const snapshot = itemSnapshot(item, amount, defeatedNpcLevel);
+                if (snapshot) result.items.push(snapshot);
+            }
+        }
+    }
+    if (BossGearDrops.isBossNpc(rewardData.selfId)) {
+        for (const { selfId, amount } of BossGearDrops.roll(rewardData.rewards, rng)) {
+            if (result.items.length >= maxItems) break;
+            const snapshot = itemSnapshot({ selfId }, amount, defeatedNpcLevel);
             if (snapshot) result.items.push(snapshot);
         }
     }

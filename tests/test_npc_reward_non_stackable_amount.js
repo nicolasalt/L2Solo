@@ -10,7 +10,7 @@ const PartyCompanionService = invoke('GameServer/Bot/AI/PartyCompanionService');
 
 const originalFetchRewards = DataCache.fetchNpcRewardsFromSelfId;
 const originalFetchItem = DataCache.fetchItemFromSelfId;
-const originalRewardGroupRoll = ProgressionRates.rewardGroupRoll;
+const originalGroupRate = ProgressionRates.groupRate;
 const originalObserveDrop = BotLootEtiquette.observeDrop;
 const originalQueueGroundPickup = PartyCompanionService.queueRandomGroundPickup;
 const originalRandom = Math.random;
@@ -39,7 +39,7 @@ try {
             template: { kind: 'Other.Material', name: 'Varnish' },
             etc: { stackable: true }
         });
-    ProgressionRates.rewardGroupRoll = () => ({ hit: true, itemRate: 3 });
+    ProgressionRates.groupRate = () => 3;
     Math.random = () => 0.99;
 
     const groundDrops = [];
@@ -92,7 +92,7 @@ try {
 } finally {
     DataCache.fetchNpcRewardsFromSelfId = originalFetchRewards;
     DataCache.fetchItemFromSelfId = originalFetchItem;
-    ProgressionRates.rewardGroupRoll = originalRewardGroupRoll;
+    ProgressionRates.groupRate = originalGroupRate;
     BotLootEtiquette.observeDrop = originalObserveDrop;
     PartyCompanionService.queueRandomGroundPickup = originalQueueGroundPickup;
     Math.random = originalRandom;

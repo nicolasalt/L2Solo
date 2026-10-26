@@ -67,14 +67,15 @@ function groupsFor(reward) {
     groups = [];
     for (const kind of ['drop', 'spoil']) for (const group of reward[kind === 'drop' ? 'rewards' : 'spoils'] || []) {
         const rate = Rates.groupRate(group, kind), items = group.items || [];
-        const total = kind === 'drop' ? items.reduce((sum, item) =>
-            sum + Rates.dropItemSelectionWeight(group, item, rate), 0) : 100;
+        // npcValue multiplies by the group chance; a drop item's own capped
+        // chance is expressed as its share of that.
+        const groupChance = Rates.rollGroup(group.overall, rate, () => 1).chance;
         const expected = { group, kind, adena: 0, items: 0 };
         let partition = 0, covered = 0;
         for (const item of items) {
             let share, amount;
             if (kind === 'drop') {
-                share = total > 0 ? Rates.dropItemSelectionWeight(group, item, rate) / total : 0;
+                share = groupChance > 0 ? Rates.dropItemChance(group, item, rate) / groupChance : 0;
                 amount = Rates.expectedDropAmount(group, item, rate);
             } else {
                 partition += Number(item.chance || 0);

@@ -68,10 +68,13 @@ function buildProfile(env, general) {
     };
 }
 
+function hasAdena(group) {
+    return (group?.items || []).some((item) => Number(item.selfId) === 57);
+}
+
 function groupRate(group, kind = 'drop') {
     const current = profile();
-    const hasAdena = (group.items || []).some((item) => Number(item.selfId) === 57);
-    if (hasAdena) return current.adena;
+    if (hasAdena(group)) return current.adena;
     return kind === 'spoil' ? current.spoil : current.drop;
 }
 
@@ -97,72 +100,61 @@ function dropItemBaseChance(group, item) {
     return groupChance * itemShare / 100;
 }
 
-function dropItemSelectionWeight(group, item, rate) {
-    return Math.min(100, dropItemBaseChance(group, item) * numberOr(rate, 1));
-}
-
-function dropItemSelectionChance(group, item, rate) {
-    const total = (group?.items || []).reduce((sum, candidate) => (
-        sum + dropItemSelectionWeight(group, candidate, rate)
-    ), 0);
-    return total > 0 ? dropItemSelectionWeight(group, item, rate) / total : 0;
-}
-
 function dropAmountBounds(item) {
     const min = Math.max(0, Math.floor(Number(item?.min) || 0));
     return { min, max: Math.max(min, Math.floor(Number(item?.max) || min)) };
 }
 
-function dropAmountPlan(group, item, rate) {
-    const scaledChance = Math.max(100, dropItemBaseChance(group, item) * numberOr(rate, 1));
-    const guaranteed = Math.floor(scaledChance / 100);
-    return {
-        ...dropAmountBounds(item),
-        guaranteed,
-        remainder: scaledChance - guaranteed * 100,
-        expectedRepeats: scaledChance / 100
-    };
+// The rate raises an item's chance first and only the part beyond 100%
+// multiplies its amount: 6-8 at 50% is 6-8 at 100% at x2 and 12-16 at
+// 100% at x4, never 12-16 at 50%. Adena follows the same rule.
+function dropItemScaledChance(group, item, rate) {
+    return dropItemBaseChance(group, item) * numberOr(rate, 1);
+}
+
+function dropItemChance(group, item, rate) {
+    return Math.min(100, dropItemScaledChance(group, item, rate));
+}
+
+function dropAmountMultiplier(group, item, rate) {
+    return Math.max(1, dropItemScaledChance(group, item, rate) / 100);
 }
 
 function dropAmountRange(group, item, rate) {
-    const { min, max, guaranteed, remainder } = dropAmountPlan(group, item, rate);
-    return {
-        min: Math.max(1, guaranteed * min),
-        max: Math.max(1, (guaranteed + (remainder > 0 ? 1 : 0)) * max)
-    };
+    const { min, max } = dropAmountBounds(item);
+    const multiplier = dropAmountMultiplier(group, item, rate);
+    return { min: Math.max(1, Math.floor(min * multiplier)), max: Math.max(1, Math.ceil(max * multiplier)) };
 }
 
+// The amount one drop of the item gives on average.
 function expectedDropAmount(group, item, rate) {
-    const { min, max, expectedRepeats } = dropAmountPlan(group, item, rate);
-    return expectedRepeats * (min + max) / 2;
-}
-
-function selectDropItem(group, rate, rng = Math.random) {
-    const weighted = (group?.items || []).map((item) => ({
-        item,
-        weight: dropItemSelectionWeight(group, item, rate)
-    })).filter((entry) => entry.weight > 0);
-    const total = weighted.reduce((sum, entry) => sum + entry.weight, 0);
-    if (total <= 0) return null;
-
-    const roll = rng() * total;
-    let partition = 0;
-    for (const entry of weighted) {
-        partition += entry.weight;
-        if (roll < partition) return entry.item;
-    }
-    return weighted[weighted.length - 1].item;
+    const { min, max } = dropAmountBounds(item);
+    return dropAmountMultiplier(group, item, rate) * (min + max) / 2;
 }
 
 function rollDropAmount(group, item, rate, rng = Math.random) {
-    const { min, max, guaranteed, remainder } = dropAmountPlan(group, item, rate);
-    const repeats = guaranteed + (rng() * 100 < remainder ? 1 : 0);
-    let amount = 0;
+    const { min, max } = dropAmountBounds(item);
+    const base = min === max ? min : Math.floor(rng() * (max - min + 1)) + min;
+    return scaleAmount(base, dropAmountMultiplier(group, item, rate), rng);
+}
 
-    for (let index = 0; index < repeats; index++) {
-        amount += min === max ? min : Math.floor(rng() * (max - min + 1)) + min;
+// One kill's drops from a group: [{ item, amount }]. While the scaled group
+// chance fits in 100%, the native group drops at most one item, chosen by
+// its share. Beyond that every item rolls its own capped chance, so a rate
+// lifts each item to 100% before it adds to the amounts.
+function rollDropGroup(group, rate, rng = Math.random) {
+    const items = (group?.items || []).filter((item) => dropItemBaseChance(group, item) > 0);
+    const groupChance = Math.max(0, Number(group?.overall) || 0) * numberOr(rate, 1);
+    if (groupChance <= 100) {
+        if (!(rng() * 100 < groupChance)) return [];
+        const total = items.reduce((sum, item) => sum + Number(item.chance), 0);
+        let roll = rng() * total;
+        const item = items.find((candidate) => (roll -= Number(candidate.chance)) < 0) || items[items.length - 1];
+        return item ? [{ item, amount: rollDropAmount(group, item, rate, rng) }] : [];
     }
-    return Math.max(1, amount);
+    return items
+        .filter((item) => rng() * 100 < dropItemChance(group, item, rate))
+        .map((item) => ({ item, amount: rollDropAmount(group, item, rate, rng) }));
 }
 
 // This server has no Deep Blue drop penalty: a monster or boss far below the
@@ -189,12 +181,12 @@ module.exports = {
     groupRate,
     rollGroup,
     dropItemBaseChance,
-    dropItemSelectionWeight,
-    dropItemSelectionChance,
+    dropItemChance,
+    dropAmountMultiplier,
     dropAmountRange,
     expectedDropAmount,
-    selectDropItem,
     rollDropAmount,
+    rollDropGroup,
     rewardGroupRoll,
     scaleAmount
 };

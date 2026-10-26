@@ -41,9 +41,7 @@ function bot(id, x) {
     try {
         replace(Data, 'fetchNpcRewardsFromSelfId', (_id, cb) => cb({ rewards: [{}] }));
         replace(Data, 'fetchItemFromSelfId', (id, cb) => cb({ selfId: id, etc: { stackable: true } }));
-        replace(Rates, 'rewardGroupRoll', () => ({ hit: true, itemRate: 1 }));
-        replace(Rates, 'selectDropItem', () => ({ selfId: 57 }));
-        replace(Rates, 'rollDropAmount', () => 11);
+        replace(Rates, 'rollDropGroup', () => [{ item: { selfId: 57 }, amount: 11 }]);
         replace(Math, 'random', () => 0);
         replace(World, 'items', { spawns: [] });
         replace(World, 'npc', { spawns: [] });

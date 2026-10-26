@@ -29,6 +29,7 @@ const Database = invoke('Database');
 const PopulationConfig = invoke('GameServer/Bot/Population/PopulationConfig');
 const PlayerActivitySignal = invoke('GameServer/Bot/Population/PlayerActivitySignal');
 const ProgressionRates = invoke('GameServer/ProgressionRates');
+const BossGearDrops = invoke('GameServer/Items/BossGearDrops');
 const DataCache = invoke('GameServer/DataCache');
 const { equipmentValue, liveEquipmentValue } = invoke('GameServer/Item/EquipmentValue');
 const WorldAreaCatalog = invoke('GameServer/World/WorldAreaCatalog');
@@ -1300,7 +1301,8 @@ function raidBossLoot() {
         // Compact rows, [itemId, name, chance %, min, max, category, grade]:
         // the table holds every boss, so keep it small.
         bosses[id] = [...byItem.values()]
-            .map((row) => ({ ...row, chance: Number(((1 - row.miss) * 100).toPrecision(3)) }))
+            // Boss gear floors: armor and jewelry 50%, weapons 10%.
+            .map((row) => ({ ...row, chance: Number(BossGearDrops.bossDropChance(row.itemId, (1 - row.miss) * 100).toPrecision(3)) }))
             .filter((row) => row.chance > 0)
             .sort((a, b) => b.chance - a.chance || a.name.localeCompare(b.name))
             .map((row) => {

@@ -3,6 +3,7 @@ const SpeckMath = invoke('GameServer/SpeckMath');
 const BotLootEtiquette = invoke('GameServer/Bot/AI/BotLootEtiquette');
 const PartyCompanionService = invoke('GameServer/Bot/AI/PartyCompanionService');
 const ProgressionRates = invoke('GameServer/ProgressionRates');
+const BossGearDrops = invoke('GameServer/Items/BossGearDrops');
 const GeodataEngine = invoke('GameServer/Geodata/GeodataEngine');
 
 function isBotSession(session) {
@@ -52,14 +53,13 @@ function npcRewards(session, npc) {
         };
 
         rewards.forEach((reward) => {
-            const groupRoll = ProgressionRates.rewardGroupRoll(reward, 'drop', rewardContext);
-            if (groupRoll.hit) {
-                const item = ProgressionRates.selectDropItem(reward, groupRoll.itemRate);
-                if (!item) return;
-                const amount = ProgressionRates.rollDropAmount(reward, item, groupRoll.itemRate);
-                awardDrop(this, session, npc, item.selfId, amount);
-            }
+            const rate = ProgressionRates.groupRate(reward, 'drop');
+            ProgressionRates.rollDropGroup(reward, rate)
+                .forEach(({ item, amount }) => awardDrop(this, session, npc, item.selfId, amount));
         });
+        if (BossGearDrops.isBossNpc(npc.fetchSelfId())) {
+            BossGearDrops.roll(rewards).forEach(({ selfId, amount }) => awardDrop(this, session, npc, selfId, amount));
+        }
     });
 }
 

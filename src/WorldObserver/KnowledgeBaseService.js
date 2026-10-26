@@ -205,8 +205,9 @@ function scaledRewardGroups(groups, kind, npcLevel, progressionRates, iconFor) {
             chancePercent: round(roll.chance),
             items: (sourceGroup.items || []).map((item, itemIndex) => {
                 const rawItem = group.items[itemIndex];
+                // A drop item's own capped chance, as a share of the group's.
                 const selectionChance = kind === 'drop'
-                    ? progressionRates.dropItemSelectionChance(group, rawItem, roll.itemRate)
+                    ? (groupChance > 0 ? progressionRates.dropItemChance(group, rawItem, roll.itemRate) / 100 / groupChance : 0)
                     : spoilSelectionChance(group, itemIndex);
                 const expectedConditionalAmount = kind === 'drop'
                     ? progressionRates.expectedDropAmount(group, rawItem, roll.itemRate)

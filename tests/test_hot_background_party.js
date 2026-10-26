@@ -220,9 +220,7 @@ try {
     const Rates = invoke('GameServer/ProgressionRates');
     replace(Data, 'fetchNpcRewardsFromSelfId', (_id, cb) => cb({ rewards: [{}] }));
     replace(Data, 'fetchItemFromSelfId', (id, cb) => cb({ selfId: id, etc: { stackable: true } }));
-    replace(Rates, 'rewardGroupRoll', () => ({ hit: true, itemRate: 1 }));
-    replace(Rates, 'selectDropItem', () => ({ selfId: 57 }));
-    replace(Rates, 'rollDropAmount', () => 10);
+    replace(Rates, 'rollDropGroup', () => [{ item: { selfId: 57 }, amount: 10 }]);
     replace(Math, 'random', () => 0.5);
     group.forEach(s => { s.accountId = `bot_${s.actor.fetchId()}`; });
     const drops = [];

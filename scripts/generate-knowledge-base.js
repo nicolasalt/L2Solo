@@ -133,7 +133,7 @@ function rateResult(group, item, itemIndex, kind, preset, npcLevel) {
     }, () => 0);
     const groupChance = Number(roll.chance || 0) / 100;
     const selectionChance = kind === 'drop'
-        ? ProgressionRates.dropItemSelectionChance(group, item, roll.itemRate)
+        ? (groupChance > 0 ? ProgressionRates.dropItemChance(group, item, roll.itemRate) / 100 / groupChance : 0)
         : spoilSelectionChance(group, itemIndex);
     const expectedConditionalAmount = kind === 'drop'
         ? ProgressionRates.expectedDropAmount(group, item, roll.itemRate)
