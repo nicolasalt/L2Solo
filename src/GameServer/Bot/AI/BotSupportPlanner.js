@@ -340,6 +340,10 @@ function matchesSkillEffect(effect, skill, keys) {
     if (semantic.stackFamily && effect?.stackFamily) {
         return semantic.stackFamily === effect.stackFamily;
     }
+    // A buff with its own native stack slot is never covered by another
+    // buff that merely shares a stat (Agility's evasion is not Berserker
+    // Spirit); only its own id, key or slot counts.
+    if (semantic.stackFamily) return false;
 
     // Songs and dances are separate party effects even when another buff
     // happens to expose the same stat (for example Chant of Rage and Dance

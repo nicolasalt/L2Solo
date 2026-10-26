@@ -713,13 +713,13 @@ World.fetchNpcsInRadius = originalFetchNpcsInRadius;
     const Skill = invoke('GameServer/Model/Skill');
     const real = (id, level) => new Skill({ selfId: id, level, passive: false, mp: 10, distance: 600 });
     const berserkMage = actor('BerserkMage', 13);
-    for (const [id, level] of [[1040, 3], [1068, 3], [1059, 2], [1086, 1]]) {
+    for (const [id, level] of [[1040, 3], [1068, 3], [1059, 2], [1086, 1], [1087, 2], [1078, 3], [1036, 1], [1204, 2]]) {
         const semantic = real(id, level).fetchSemantic();
         EffectStore.apply(berserkMage, { key: semantic.effect, id, level, type: 'buff', stats: semantic.stats || {},
             stackFamily: semantic.stackFamily, stackOrder: semantic.stackOrder, durationMs: 1200000 });
     }
     assert.strictEqual(BotSupportPlanner.needsSkill(berserkMage, real(1062, 1)), true,
-        'Berserker Spirit is still needed on top of Shield, Might, Empower and Haste');
+        'Berserker Spirit is still needed on top of Shield, Might, Empower, Haste and Agility (shared evasion stat)');
 }
 
 console.log('Bot support planner checks passed');
