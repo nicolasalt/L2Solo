@@ -206,6 +206,25 @@ try {
     assert.strictEqual(bot.leaderCastActive, undefined);
     assert.strictEqual(bot.leaderCastQueue, undefined);
     casts.length = 0;
+
+    // "Acumen on every mage": the same skill waits out its reuse instead of
+    // being dropped from the queue.
+    let reusable = true;
+    bot.actor.canUseSkill = () => reusable;
+    BotAgentTools.execute(bot, decision('use_skill', { skillName: 'Shield' }), [], ctx());
+    BotAgentTools.execute(bot, decision('use_skill', { skillName: 'Shield' }), [], ctx());
+    assert.strictEqual(casts.length, 1);
+    reusable = false;
+    BotAgentTools.pumpLeaderCasts(bot, Date.now() + 2000);
+    assert.strictEqual(casts.length, 1, 'the second Shield waits for its reuse');
+    assert.strictEqual(bot.leaderCastQueue.length, 1);
+    reusable = true;
+    BotAgentTools.pumpLeaderCasts(bot, Date.now() + 2500);
+    assert.strictEqual(casts.length, 2, 'the second Shield is cast once reusable');
+    BotAgentTools.pumpLeaderCasts(bot, Date.now() + 5000);
+    clearTimeout(bot.leaderCastTimer);
+    bot.actor.canUseSkill = () => true;
+    casts.length = 0;
     delete bot.actor.state;
 
     // Overrides of built-in caution, party-wide by default.

@@ -288,6 +288,9 @@ function isUsefulForTarget(target, skill, provider = null, context = {}, plannin
         ? HotBotPolicyOverlay.buffAllowedOn(provider.session, skill, target?.fetchId?.())
         : null;
     if (leaderRule === false) return false;
+    // A skill the leader blocked is refused at cast time. Planning it anyway
+    // made the buffer retry it forever instead of casting the next buff.
+    if (provider?.session?.hotPolicyOverlay && HotBotPolicyOverlay.skillBlocked(provider.session, skill)) return false;
     if (leaderRule === true && semantic.target !== 'party' && skill?.fetchTargetKind?.() !== 'party') return true;
     if (skill?.fetchTargetKind?.() === 'ally' && !partyAuraRecipients([], provider, skill, planning).includes(target)) return false;
     if (!situationalBuffUseful(semantic.effect, context)) return false;

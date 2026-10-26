@@ -229,6 +229,13 @@ HotBotPolicyOverlay.set(policyProvider.session, {
 }, { ownerId: 1 });
 assert.strictEqual(BotSupportPlanner.supportSkills(policyProvider).length, 2, 'allowing one buff must not disable the other useful party buffs');
 HotBotPolicyOverlay.clear(policyProvider.session, 'test_reset');
+// A buff the leader blocked is never planned: the cast would be refused and
+// the buffer used to retry it instead of moving on to the next buff.
+const blockedFor = actor('BlockedForMage', 25);
+assert.strictEqual(BotSupportPlanner.isUsefulForTarget(blockedFor, empower, policyProvider), true);
+HotBotPolicyOverlay.set(policyProvider.session, { blockedSkills: [empower.fetchSelfId()] }, { ownerId: 1 });
+assert.strictEqual(BotSupportPlanner.isUsefulForTarget(blockedFor, empower, policyProvider), false, 'a blocked buff is not planned');
+HotBotPolicyOverlay.clear(policyProvider.session, 'test_reset');
 
 assert.deepStrictEqual(
     BotSupportPlanner.supportSkills(actor('ChantBuffer', 49, [chantOfLife])),

@@ -974,7 +974,8 @@ function useSkill(context) {
     if (!resolved.skill) return skillNotFound(resolved.reason, resolved.alternatives, context.decision.skillName);
     const skill = resolved.skill;
     if (bot.isDead?.()) return { applied: false, reason: 'bot_dead' };
-    if (bot.canUseSkill?.(skill) === false) return { applied: false, reason: 'skill_on_cooldown', skillName: skill.fetchName?.() };
+    const queued = !!session.leaderCastActive || !!session.leaderCastQueue?.length;
+    if (!queued && bot.canUseSkill?.(skill) === false) return { applied: false, reason: 'skill_on_cooldown', skillName: skill.fetchName?.() };
     if (Number(bot.fetchMp?.() || 0) < Number(skill.fetchConsumedMp?.() || 0)) {
         return { applied: false, reason: 'low_mp_for_skill', skillName: skill.fetchName?.() };
     }
@@ -985,7 +986,6 @@ function useSkill(context) {
         return { applied: false, reason: 'target_too_far', skillName: skill.fetchName?.() };
     }
     const targetName = target === bot ? 'myself' : target.fetchName?.() || 'the target';
-    const queued = !!session.leaderCastActive || !!session.leaderCastQueue?.length;
     if (queued) (session.leaderCastQueue ||= []).push({ skill, target });
     else startLeaderCast(session, skill, target);
     return {
@@ -1003,6 +1003,7 @@ function useSkill(context) {
 const LEADER_CAST_START_MS = 1500;
 const LEADER_CAST_FINISH_MS = 8000;
 const LEADER_CAST_POLL_MS = 250;
+const LEADER_CAST_REUSE_WAIT_MS = 30000;
 
 function startLeaderCast(session, skill, target) {
     const bot = session.actor;
@@ -1038,7 +1039,18 @@ function pumpLeaderCasts(session, now = Date.now()) {
     }
     session.leaderCastActive = undefined;
     while (session.leaderCastQueue?.length && bot && !bot.isDead?.()) {
-        const { skill, target } = session.leaderCastQueue.shift();
+        const entry = session.leaderCastQueue[0];
+        const { skill, target } = entry;
+        // "Acumen on every mage" repeats one skill: wait out its reuse.
+        if (bot.canUseSkill?.(skill) === false) {
+            entry.reuseUntil ||= now + LEADER_CAST_REUSE_WAIT_MS;
+            if (now < entry.reuseUntil) {
+                session.leaderCastTimer = setTimeout(() => pumpLeaderCasts(session), LEADER_CAST_POLL_MS);
+                return;
+            }
+        }
+        session.leaderCastQueue.shift();
+        if (bot.canUseSkill?.(skill) === false) continue;
         if (target.isDead?.() && skill.fetchTargetKind?.() !== 'corpse_player') continue;
         if (Number(bot.fetchMp?.() || 0) < Number(skill.fetchConsumedMp?.() || 0)) continue;
         startLeaderCast(session, skill, target);
