@@ -518,6 +518,23 @@ class Attack {
         this.clearLoadedShot(actor, magicSkill);
         actor.state.setCasts(false);
         invoke('GameServer/Bot/AI/BotSupportPlanner').finishSupportCast(session, actor, skill);
+        // A bot picks its next action as soon as a cast ends, not at its
+        // next AI tick (about a second apart): chained spells such as
+        // Surrender to Wind then Hurricane used to idle in between.
+        if (session?.actor === actor && String(session.accountId || '').startsWith('bot_')) {
+            const BotAI = invoke('GameServer/Bot/BotAI');
+            BotAI.wakeup(session);
+            // A spammed spell is recast by its cooldown: wake again the moment
+            // its reuse ends rather than at whatever tick comes after.
+            const reuseLeft = Number(actor.skillReuseUntil?.get?.(skill?.fetchSelfId?.()) || 0) - Date.now();
+            if (reuseLeft > 0 && reuseLeft < 60000) {
+                clearTimeout(session.reuseWakeTimer);
+                session.reuseWakeTimer = setTimeout(() => {
+                    session.reuseWakeTimer = undefined;
+                    if (session.actor === actor && !actor.state?.fetchCasts?.()) BotAI.wakeup(session);
+                }, reuseLeft + 20);
+            }
+        }
 
         // Start replenish
         actor.automation.replenishVitals(actor);
