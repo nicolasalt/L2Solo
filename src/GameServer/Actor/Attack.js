@@ -217,7 +217,7 @@ class Attack {
                 if (!entry.hitLanded || entry.hit.damage <= 0) this.recordPlayerAggression(session, actor, target);
                 if (entry.hitLanded) {
                     const beforeHp = Number(target.fetchHp?.()) || 0;
-                    this.hit(session, actor, target, entry.hit.damage);
+                    this.hit(session, actor, target, entry.hit.damage, { reflectable: !rangedAttack });
                     const hpDamage = Math.max(0, beforeHp - (Number(target.fetchHp?.()) || 0));
                     this.applyDamageAbsorb(session, actor, hpDamage);
                     if (entry.hit.flags & ServerResponse.attack.HITFLAG_CRIT) {
@@ -1375,7 +1375,9 @@ class Attack {
             invoke(path.npc).receivedHit(session, actor, creature, hit, context);
         }
 
-        this.applyReflectedDamage(session, actor, creature, hit);
+        // C4 reflects only melee normal attacks: spells, skills, procs and
+        // arrows pass a reflect-damage shield (BOSS Reflect Damage) untouched.
+        if (context.reflectable === true) this.applyReflectedDamage(session, actor, creature, hit);
     }
 
     tryBreakCast(creature, damage, rng = Math.random) {

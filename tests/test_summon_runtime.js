@@ -927,7 +927,7 @@ async function checkPhantomActions(session, summon, summonSkillId) {
     reflectedAttacker.setHp(1000);
     kai.setHp(1000);
     World.npc = { spawns: [kai, reflectedAttacker], grid: {}, nextId: 990042 };
-    attack.hit(boxerSession, reflectedAttacker, kai, 100);
+    attack.hit(boxerSession, reflectedAttacker, kai, 100, { reflectable: true });
     assert.strictEqual(reflectedAttacker.fetchHp(), 980, 'Self Damage Shield should reflect sourced damage to an NPC attacker');
     kai.destructor(boxerSession);
     reflectedAttacker.destructor(boxerSession);
