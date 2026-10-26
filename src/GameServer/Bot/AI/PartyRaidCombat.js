@@ -143,7 +143,7 @@ function tick(session, bot, Generics, AI, context, now = Date.now()) {
     if (bot.state.fetchCasts?.()) return true;
     const role = Roles.inferRole(bot);
     // The leader's "don't attack" / "heal like a healer" orders hold in a
-    // raid: such a bot never takes a damage or debuff slot.
+    // raid: such a bot sleeps adds but never takes a damage or debuff slot.
     const leaderRules = session.hotPolicyOverlay ? invoke('GameServer/Bot/AI/HotBotPolicyOverlay').skillRules(session) : {};
     const supportOnly = role === 'healer' || leaderRules.noAttacks === true || leaderRules.actAsHealer === true;
     let combatTarget = raidPlan.boss;
@@ -214,7 +214,7 @@ function tick(session, bot, Generics, AI, context, now = Date.now()) {
     // are physical fighters after their party music is applied, so when
     // casting is unavailable they must fall through to executeCombat and
     // use their weapon normally.
-    if (!isRaidTank && Restrictions.canCast(bot) && leaderRules.noAttacks !== true) {
+    if (!isRaidTank && Restrictions.canCast(bot)) {
         const control = ClassTactics.supportCrowdControl(bot, raidPlan.minions, {
             raid: true,
             primaryTargetId: raidPlan.focusMinion?.fetchId?.() || null,
@@ -227,7 +227,8 @@ function tick(session, bot, Generics, AI, context, now = Date.now()) {
                 skillId: control.skill.fetchSelfId(), partyId, at: now };
             return true;
         }
-        const debuff = ClassTactics.raidDebuffAction(bot,
+        // Crowd control (Sleep on adds) stays; a no-attacks bot debuffs nothing.
+        const debuff = leaderRules.noAttacks !== true && ClassTactics.raidDebuffAction(bot,
             [raidPlan.boss, raidPlan.focusMinion].filter(Boolean), {
                 primaryTargetId: raidPlan.boss.fetchId(),
                 canAttempt

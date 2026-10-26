@@ -1561,7 +1561,10 @@ const FollowingState = {
             } else if (impairments.silenced) {
                 recordRoleDecision(session, bot, 'save_mp', 'silenced');
                 keepRoleDecision = true;
-            } else if (bot.fetchMp() < supportBuffTarget.skill.fetchConsumedMp() || botVitals.mpRatio < 0.35) {
+            // The leader's spend_all_mp order lifts the 35% buffing reserve.
+            } else if (bot.fetchMp() < supportBuffTarget.skill.fetchConsumedMp()
+                || (botVitals.mpRatio < 0.35 && !(session.hotPolicyOverlay
+                    && invoke('GameServer/Bot/AI/HotBotPolicyOverlay').hasOverride(session, 'spend_all_mp')))) {
                 recordRoleDecision(session, bot, 'save_mp', 'low_mp_for_buff', {
                     buff: supportBuffTarget.effect,
                     targetId: supportBuffTarget.target.fetchId()

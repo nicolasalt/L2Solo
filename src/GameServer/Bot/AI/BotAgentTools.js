@@ -1186,7 +1186,7 @@ const OVERRIDE_TEXT = {
     ignore_level_limits: ['I will fight mobs far below or above my level.', 'Back to my normal level limits.'],
     engage_raid: ['I will engage raid bosses when you call it.', 'Back to keeping clear of raid bosses unless we pull properly.'],
     no_retreat: ['No retreating: I stay in the fight.', 'I will retreat again when it gets too dangerous.'],
-    spend_all_mp: ['I will spend all my MP, no reserve.', 'Keeping my usual MP reserve again.']
+    spend_all_mp: ['I will spend all my MP on spells and buffs, no reserve.', 'Keeping my usual MP reserve again.']
 };
 
 function overrideRule(context) {
@@ -1703,7 +1703,7 @@ function registerTools() {
         avoid_skill: 'Stop using the named skills (skillNames) from now on, until the party ends or the leader clears it.',
         clear_skill_preferences: 'Clear prefer/avoid orders for skillNames, or for every skill when skillNames is empty.',
         set_skill_rule: 'Set a rotation rule: skillRule no_debuffs | allow_debuffs | recharge_below (ruleValue = MP percent; healers Recharge anyone below it, in combat too) | recharge_own_mp_floor (ruleValue = the healer\'s own MP percent under which it stops Recharging; default 25) | recharge_mages_only (Recharge only damage-dealing mages, never healers, buffers or the tank) | recharge_anyone | heal_tank_below (ruleValue = tank HP percent; a targeted heal on the tank first, in raids too) | no_heal_tank_rule | no_recharge_rule | only_skills (skillNames: the only attack spells it may cast; it waits for MP instead of casting others) | no_only_skills | maintain_debuffs (skillNames: debuffs kept up on a raid boss, e.g. Curse Gloom, Surrender To Fire) | no_maintain_debuffs | no_attacks / allow_attacks (a support bot that never attacks) | act_as_healer / stop_healer_role (a buffer that heals like a healer) | clear.',
-        override_rule: 'Override a built-in caution rule for the party (scope=self for this bot): overrideName ignore_level_limits | engage_raid | no_retreat | spend_all_mp, overrideEnabled true/false. Death and missing skills stay hard limits.',
+        override_rule: 'Override a built-in caution rule for the party (scope=self for this bot): overrideName ignore_level_limits | engage_raid | no_retreat | spend_all_mp (no MP reserve, for buffing too), overrideEnabled true/false. Death and missing skills stay hard limits.',
         buy_for_self: 'items: the whole shopping list [{itemName, amount}] (or itemName + amount for one item). Go to the shop that sells it (shots, potions, scrolls, reagents, gear), buy amount with the buyer\'s own Adena, keep it and come back. forMembers names who buys (names, classes like "necromancers", roles like "mages", or "everyone"); empty = this bot.',
         upgrade_gear: 'Buy the best affordable upgrade from the gear plan. slots limits it to what the leader named: ["weapon"] for "best weapon", or helmet, gloves, chest, legs, boots, shield, armor, jewelry. Without slots any slot may change (and better gear in the bag is equipped). Use only when the leader asks for upgrades. forMembers as for buy_for_self.',
         open_buy_shop: 'Sit down here with a private buy store so the leader can sell to it: items [{itemName, amount, price}] (price = Adena per unit). Following pauses until it is filled, closed, or the leader leaves.',

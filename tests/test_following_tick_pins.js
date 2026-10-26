@@ -611,6 +611,20 @@ pin('healer_personal_threat_retreat', {
     expect: (w) => assert.strictEqual(w.session.roleDecision.reason, 'personal_attack_no_control')
 });
 
+// "Ignore the 35% mana rule" (spend_all_mp): the buffer keeps buffing.
+pin('support_buff_spends_reserve_on_leader_order', {
+    build: (w) => {
+        const haste = skill('haste', { selfId: 1086, mp: 10 });
+        w.bot.f.mp = 20;
+        w.session.hotPolicyOverlay = { lifetime: 'party' };
+        w.cfg.returns['HotBotPolicyOverlay.hasOverride'] = (_session, name) => name === 'spend_all_mp';
+        w.cfg.returns['HotBotPolicyOverlay.skillRules'] = () => ({});
+        w.cfg.returns['BotSupportPlanner.nextAction'] = () => ({ effect: 'haste', target: w.player, skill: haste });
+    },
+    role: 'buffer',
+    expect: (w) => assert.strictEqual(w.session.roleDecision.action, 'cast_support')
+});
+
 pin('critical_hp_retreats_from_threat', {
     build: (w) => {
         const mob = npc('mob', { id: 500, x: 150, destId: 101 });
