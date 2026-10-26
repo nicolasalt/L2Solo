@@ -984,6 +984,28 @@ function useSkill(context) {
     if (target !== bot && range > 0 && distance2d(bot, target) > Math.max(900, range + 600)) {
         return { applied: false, reason: 'target_too_far', skillName: skill.fetchName?.() };
     }
+    const targetName = target === bot ? 'myself' : target.fetchName?.() || 'the target';
+    const queued = !!session.leaderCastActive || !!session.leaderCastQueue?.length;
+    if (queued) (session.leaderCastQueue ||= []).push({ skill, target });
+    else startLeaderCast(session, skill, target);
+    return {
+        applied: true,
+        reason: queued ? 'skill_cast_queued' : 'skill_cast_started',
+        skillId: skill.fetchSelfId(),
+        skillName: skill.fetchName?.(),
+        playerVisibleReply: `${queued ? 'Next' : 'Casting'} ${skill.fetchName?.()} on ${targetName}.`
+    };
+}
+
+// The leader's casts run one after another. Each cast aborts the one in
+// progress, so a "rebuff" of several use_skill steps used to cancel every
+// buff but the last one.
+const LEADER_CAST_START_MS = 1500;
+const LEADER_CAST_FINISH_MS = 8000;
+const LEADER_CAST_POLL_MS = 250;
+
+function startLeaderCast(session, skill, target) {
+    const bot = session.actor;
     if (skill.fetchTargetKind?.() === 'enemy') {
         session.currentTargetId = target.fetchId();
         bot.select?.({ id: target.fetchId() });
@@ -995,14 +1017,34 @@ function useSkill(context) {
         ctrl: true,
         leaderOrdered: true
     });
-    const targetName = target === bot ? 'myself' : target.fetchName?.() || 'the target';
-    return {
-        applied: true,
-        reason: 'skill_cast_started',
-        skillId: skill.fetchSelfId(),
-        skillName: skill.fetchName?.(),
-        playerVisibleReply: `Casting ${skill.fetchName?.()} on ${targetName}.`
-    };
+    const now = Date.now();
+    session.leaderCastActive = { seen: false, startBy: now + LEADER_CAST_START_MS, finishBy: now + LEADER_CAST_FINISH_MS };
+    session.leaderCastTimer = setTimeout(() => pumpLeaderCasts(session), LEADER_CAST_POLL_MS);
+}
+
+function pumpLeaderCasts(session, now = Date.now()) {
+    clearTimeout(session.leaderCastTimer);
+    session.leaderCastTimer = undefined;
+    const bot = session.actor;
+    const active = session.leaderCastActive;
+    if (active && bot && !bot.isDead?.()) {
+        const casting = bot.state?.fetchCasts?.() === true;
+        if (casting) active.seen = true;
+        // Wait for the ordered cast to begin, then to finish.
+        if (now < active.finishBy && (casting || (!active.seen && now < active.startBy))) {
+            session.leaderCastTimer = setTimeout(() => pumpLeaderCasts(session), LEADER_CAST_POLL_MS);
+            return;
+        }
+    }
+    session.leaderCastActive = undefined;
+    while (session.leaderCastQueue?.length && bot && !bot.isDead?.()) {
+        const { skill, target } = session.leaderCastQueue.shift();
+        if (target.isDead?.() && skill.fetchTargetKind?.() !== 'corpse_player') continue;
+        if (Number(bot.fetchMp?.() || 0) < Number(skill.fetchConsumedMp?.() || 0)) continue;
+        startLeaderCast(session, skill, target);
+        return;
+    }
+    session.leaderCastQueue = undefined;
 }
 
 function skillNamesFrom(decision) {
@@ -2026,6 +2068,7 @@ function pendingReply(result = {}) {
 
 module.exports = {
     ACTIONS,
+    pumpLeaderCasts,
     availableActions,
     execute,
     remember,

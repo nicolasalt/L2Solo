@@ -182,6 +182,32 @@ try {
     assert.strictEqual(cast.applied, true, cast.reason);
     assert.deepStrictEqual(casts.pop(), { id: 811, selfId: 1068, ctrl: true, leaderOrdered: true });
 
+    // "rebuff": several casts for one bot run one after another; a new order
+    // must not abort the cast in progress.
+    const shield = skill(1040, 'Shield', { fetchTargetKind: () => 'self' });
+    const focus = skill(1077, 'Focus', { fetchTargetKind: () => 'self' });
+    skills.push(shield, focus);
+    const second = BotAgentTools.execute(bot, decision('use_skill', { skillName: 'Shield' }), [], ctx());
+    const third = BotAgentTools.execute(bot, decision('use_skill', { skillName: 'Focus' }), [], ctx());
+    assert.strictEqual(second.reason, 'skill_cast_queued');
+    assert.strictEqual(third.reason, 'skill_cast_queued');
+    assert.strictEqual(casts.length, 0, 'queued casts wait for Might');
+    let casting = true;
+    bot.actor.state = { fetchCasts: () => casting };
+    const started = bot.leaderCastActive.startBy;
+    BotAgentTools.pumpLeaderCasts(bot, started - 1000);
+    assert.strictEqual(casts.length, 0, 'Might is still being cast');
+    casting = false;
+    BotAgentTools.pumpLeaderCasts(bot, started - 900);
+    assert.deepStrictEqual(casts.map((entry) => entry.selfId), [1040], 'Shield follows once Might finished');
+    BotAgentTools.pumpLeaderCasts(bot, Date.now() + 2000);
+    assert.deepStrictEqual(casts.map((entry) => entry.selfId), [1040, 1077], 'a cast that never starts does not block the queue');
+    BotAgentTools.pumpLeaderCasts(bot, Date.now() + 2000);
+    assert.strictEqual(bot.leaderCastActive, undefined);
+    assert.strictEqual(bot.leaderCastQueue, undefined);
+    casts.length = 0;
+    delete bot.actor.state;
+
     // Overrides of built-in caution, party-wide by default.
     const override = BotAgentTools.execute(bot, decision('override_rule', { overrideName: 'spend_all_mp', overrideEnabled: true }), [], ctx());
     assert.strictEqual(override.applied, true, override.reason);
