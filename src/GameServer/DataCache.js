@@ -154,6 +154,9 @@ const DataCache = {
         ];
         DataCache.npcRewards      = [
             ...require('../../data/Pets/c4-quest-npcs.json').rewards,
+            // Queen Ant, Core, Orfen and Antharas: the C4 lists replace the
+            // placeholders in rewards.json (the first entry for an id wins).
+            ...validateModel(path + 'Npcs/Rewards/c4_grand_bosses'),
             ...validateModel(path + 'Npcs/Rewards/rewards').filter((reward) => reward.selfId !== 135),
             ...validateModel(path + 'Npcs/Rewards/c4_swamp_of_screams'),
             ...validateModel(path + 'Npcs/Rewards/c4_garden_of_beasts'),
@@ -214,6 +217,7 @@ const DataCache = {
             ...validateModel(path + 'Items/Armors/c4_sealed_a_grade'),
             ...validateModel(path + 'Items/Armors/c4_s_grade'),
             ...validateModel(path + 'Items/Armors/c4_unsealed'),
+            ...validateModel(path + 'Items/Armors/c4_grand_boss_jewels'),
             ...validateModel(path + 'Items/Weapons/weapons'),
             ...validateModel(path + 'Items/Weapons/c4_special_ability_weapons'),
             ...validateModel(path + 'Items/Weapons/c4_sa_catalog'),

@@ -858,6 +858,7 @@ const tests = [
     'tests/test_hot_cold_progression_parity.js',
     'tests/test_progression_rates.js',
     'tests/test_boss_gear_drops.js',
+    'tests/test_grand_boss_drops.js',
     'tests/test_progression_content_cap.js',
     'tests/test_death_experience.js',
     'tests/test_death_experience_handoff.js',
