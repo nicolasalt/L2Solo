@@ -761,7 +761,7 @@ function loadRaidBossLoot() {
 
 function raidBossLootRows(id) {
     return (state.raidBossLoot?.bosses?.[id] || [])
-        .map(([itemId, name, chance, min, max, category]) => ({ itemId, name, chance, min, max, category }));
+        .map(([itemId, name, chance, min, max, category, grade]) => ({ itemId, name, chance, min, max, category, grade }));
 }
 
 function lootAmount(row) {
@@ -780,16 +780,32 @@ function lootRateLabel() {
 
 const GEAR_CATEGORIES = new Set(['weapons', 'armor', 'jewelry']);
 
+// Gear carries its grade: NG, D, C, B, A or S.
+function lootGradeLabel(row) {
+    if (!GEAR_CATEGORIES.has(row.category)) return '';
+    return row.grade === 'no-grade' || !row.grade ? 'NG' : String(row.grade).toUpperCase();
+}
+
+function lootGradeBadge(row) {
+    const label = lootGradeLabel(row);
+    return label ? `<i class="loot-grade grade-${escapeHtml(label.toLowerCase())}" title="${escapeHtml(label === 'NG' ? 'No grade' : `${label} grade`)}">${text(label)}</i>` : '';
+}
+
+function lootName(row) {
+    const label = lootGradeLabel(row);
+    return `${label ? `[${label}] ` : ''}${row.name}${lootAmount(row)}`;
+}
+
 // The table lists every gear drop (weapons, armor, jewelry); the full drop
 // list stays in the tooltip and on the map card.
 function raidBossLootCell(boss) {
     if (!state.raidBossLoot) return '<span class="raid-boss-loot"><span>Loading loot…</span></span>';
     const rows = raidBossLootRows(boss.id);
     const gear = rows.filter((row) => GEAR_CATEGORIES.has(row.category));
-    const full = rows.map((row) => `${row.name}${lootAmount(row)} — ${lootChance(row.chance)}`).join('\n');
+    const full = rows.map((row) => `${lootName(row)} — ${lootChance(row.chance)}`).join('\n');
     const title = rows.length ? ` title="${escapeHtml(`Drops at ${lootRateLabel()}:\n${full}`)}"` : '';
     if (!gear.length) return `<span class="raid-boss-loot"${title}><span>No gear drops</span></span>`;
-    return `<span class="raid-boss-loot"${title}>${gear.map((row) => `<span><b>${text(lootChance(row.chance))}</b> ${text(row.name)}${text(lootAmount(row), '')}</span>`).join('')}</span>`;
+    return `<span class="raid-boss-loot"${title}>${gear.map((row) => `<span><b>${text(lootChance(row.chance))}</b> ${lootGradeBadge(row)}${text(row.name)}${text(lootAmount(row), '')}</span>`).join('')}</span>`;
 }
 
 function raidBossLootList(boss) {
@@ -798,7 +814,7 @@ function raidBossLootList(boss) {
     if (!rows.length) return '<p class="raid-boss-card-loot-empty">No drops.</p>';
     return `<div class="raid-boss-card-loot">
         <span class="eyeline">Drops at ${text(lootRateLabel())}</span>
-        <ol>${rows.map((row) => `<li><span>${text(row.name)}${text(lootAmount(row), '')}</span><b>${text(lootChance(row.chance))}</b></li>`).join('')}</ol>
+        <ol>${rows.map((row) => `<li><span>${lootGradeBadge(row)}${text(row.name)}${text(lootAmount(row), '')}</span><b>${text(lootChance(row.chance))}</b></li>`).join('')}</ol>
     </div>`;
 }
 
