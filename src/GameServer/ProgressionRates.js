@@ -108,44 +108,56 @@ function dropAmountBounds(item) {
 // The rate raises an item's chance first and only the part beyond 100%
 // multiplies its amount: 6-8 at 50% is 6-8 at 100% at x2 and 12-16 at
 // 100% at x4, never 12-16 at 50%. Adena follows the same rule.
+//
+// Boss drops ({ boss: true }) also trade amount for chance at the same
+// expected value: the chance grows by the item's minimum amount (up to
+// 100%) and the amounts shrink by that factor, so 8-22 at 11.4% drops
+// about 1-3 at 91%. Single items (gear) keep their chance.
 function dropItemScaledChance(group, item, rate) {
     return dropItemBaseChance(group, item) * numberOr(rate, 1);
 }
 
-function dropItemChance(group, item, rate) {
-    return Math.min(100, dropItemScaledChance(group, item, rate));
+function dropItemChance(group, item, rate, { boss = false } = {}) {
+    const scaled = dropItemScaledChance(group, item, rate);
+    return Math.min(100, boss ? scaled * Math.max(1, dropAmountBounds(item).min) : scaled);
 }
 
-function dropAmountMultiplier(group, item, rate) {
-    return Math.max(1, dropItemScaledChance(group, item, rate) / 100);
+// The factor on the native amounts that keeps the expected value at the
+// item's capped chance: below 1 only for a boss item traded into chance.
+function dropAmountMultiplier(group, item, rate, options = {}) {
+    const chance = dropItemChance(group, item, rate, options);
+    return chance > 0 ? Math.max(options.boss ? 0 : 1, dropItemScaledChance(group, item, rate) / chance) : 1;
 }
 
-function dropAmountRange(group, item, rate) {
+function dropAmountRange(group, item, rate, options = {}) {
     const { min, max } = dropAmountBounds(item);
-    const multiplier = dropAmountMultiplier(group, item, rate);
+    const multiplier = dropAmountMultiplier(group, item, rate, options);
     return { min: Math.max(1, Math.floor(min * multiplier)), max: Math.max(1, Math.ceil(max * multiplier)) };
 }
 
 // The amount one drop of the item gives on average.
-function expectedDropAmount(group, item, rate) {
+function expectedDropAmount(group, item, rate, options = {}) {
     const { min, max } = dropAmountBounds(item);
-    return dropAmountMultiplier(group, item, rate) * (min + max) / 2;
+    return dropAmountMultiplier(group, item, rate, options) * (min + max) / 2;
 }
 
-function rollDropAmount(group, item, rate, rng = Math.random) {
+function rollDropAmount(group, item, rate, rng = Math.random, options = {}) {
     const { min, max } = dropAmountBounds(item);
     const base = min === max ? min : Math.floor(rng() * (max - min + 1)) + min;
-    return scaleAmount(base, dropAmountMultiplier(group, item, rate), rng);
+    const scaled = base * dropAmountMultiplier(group, item, rate, options);
+    const whole = Math.floor(scaled);
+    return Math.max(1, whole + (rng() < scaled - whole ? 1 : 0));
 }
 
 // One kill's drops from a group: [{ item, amount }]. While the scaled group
 // chance fits in 100%, the native group drops at most one item, chosen by
-// its share. Beyond that every item rolls its own capped chance, so a rate
-// lifts each item to 100% before it adds to the amounts.
-function rollDropGroup(group, rate, rng = Math.random) {
+// its share. Beyond that, and always for a boss, every item rolls its own
+// capped chance, so a rate lifts each item to 100% before it adds to the
+// amounts.
+function rollDropGroup(group, rate, rng = Math.random, options = {}) {
     const items = (group?.items || []).filter((item) => dropItemBaseChance(group, item) > 0);
     const groupChance = Math.max(0, Number(group?.overall) || 0) * numberOr(rate, 1);
-    if (groupChance <= 100) {
+    if (groupChance <= 100 && !options.boss) {
         if (!(rng() * 100 < groupChance)) return [];
         const total = items.reduce((sum, item) => sum + Number(item.chance), 0);
         let roll = rng() * total;
@@ -153,8 +165,8 @@ function rollDropGroup(group, rate, rng = Math.random) {
         return item ? [{ item, amount: rollDropAmount(group, item, rate, rng) }] : [];
     }
     return items
-        .filter((item) => rng() * 100 < dropItemChance(group, item, rate))
-        .map((item) => ({ item, amount: rollDropAmount(group, item, rate, rng) }));
+        .filter((item) => rng() * 100 < dropItemChance(group, item, rate, options))
+        .map((item) => ({ item, amount: rollDropAmount(group, item, rate, rng, options) }));
 }
 
 // This server has no Deep Blue drop penalty: a monster or boss far below the

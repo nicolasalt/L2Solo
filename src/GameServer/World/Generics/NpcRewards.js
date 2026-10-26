@@ -52,12 +52,13 @@ function npcRewards(session, npc) {
             attackerLevels: dropState.dropAttackerLevels ?? []
         };
 
+        const boss = BossGearDrops.isBossNpc(npc.fetchSelfId());
         rewards.forEach((reward) => {
             const rate = ProgressionRates.groupRate(reward, 'drop');
-            ProgressionRates.rollDropGroup(reward, rate)
+            ProgressionRates.rollDropGroup(reward, rate, Math.random, { boss })
                 .forEach(({ item, amount }) => awardDrop(this, session, npc, item.selfId, amount));
         });
-        if (BossGearDrops.isBossNpc(npc.fetchSelfId())) {
+        if (boss) {
             BossGearDrops.roll(rewards).forEach(({ selfId, amount }) => awardDrop(this, session, npc, selfId, amount));
         }
     });

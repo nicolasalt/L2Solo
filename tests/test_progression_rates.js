@@ -83,6 +83,26 @@ assert.deepStrictEqual(ProgressionRates.dropAmountRange(halfGroup, halfGroup.ite
 assert.deepStrictEqual(ProgressionRates.dropAmountRange(halfGroup, halfGroup.items[0], 4), { min: 12, max: 16 });
 assert.strictEqual(ProgressionRates.dropItemChance(halfGroup, halfGroup.items[0], 1), 50);
 assert.deepStrictEqual(ProgressionRates.rollDropGroup(halfGroup, 1, () => 0.6), [], 'x1 keeps the native 50%');
+
+// Boss drops trade amount for chance at the same expected value: 8-22 at
+// 11.4% (Flamberge Blade) drops 1-3 at 91.3%, a single item keeps its chance.
+const bladeGroup = { overall: 38.3262, items: [{ selfId: 2059, min: 8, max: 22, chance: 29.7882 }] };
+const blade = bladeGroup.items[0];
+const boss = { boss: true };
+const bossChance = ProgressionRates.dropItemChance(bladeGroup, blade, 1, boss);
+assert(Math.abs(bossChance - 8 * ProgressionRates.dropItemChance(bladeGroup, blade, 1)) < 1e-9, 'chance grows by the minimum amount');
+const ev = (options) => ProgressionRates.dropItemChance(bladeGroup, blade, 1, options) * ProgressionRates.expectedDropAmount(bladeGroup, blade, 1, options);
+assert(Math.abs(ev(boss) - ev({})) < 1e-9, 'the expected value is unchanged');
+assert.deepStrictEqual(ProgressionRates.dropAmountRange(bladeGroup, blade, 1, boss), { min: 1, max: 3 });
+const single = { overall: 10, items: [{ selfId: 71, min: 1, max: 1, chance: 100 }] };
+assert.strictEqual(ProgressionRates.dropItemChance(single, single.items[0], 1, boss), 10, 'a single item keeps its chance');
+// A boss rolls every item on its own, even below a 100% group chance.
+assert.strictEqual(ProgressionRates.rollDropGroup({ overall: 50, items: [{ selfId: 1, min: 1, max: 1, chance: 50 }, { selfId: 2, min: 1, max: 1, chance: 50 }] },
+    1, () => 0, boss).length, 2);
+let rolls = 0, total = 0;
+const seeded = (() => { let x = 7; return () => (x = (x * 16807) % 2147483647) / 2147483647; })();
+for (; rolls < 20000; rolls++) total += ProgressionRates.rollDropGroup(bladeGroup, 1, seeded, boss).reduce((sum, drop) => sum + drop.amount, 0);
+assert(Math.abs(total / rolls - ev({}) / 100) < 0.05, 'sampled boss drops keep the expected amount');
 assert.strictEqual(ProgressionRates.rollDropAmount(madnessGroup, enchantWeaponD, 10, () => 0.83036), 3, 'x10 EWD must produce three items when the 83.035% overflow roll misses');
 assert.strictEqual(ProgressionRates.rollDropAmount(madnessGroup, enchantWeaponD, 10, () => 0.83034), 4, 'x10 EWD must produce a fourth item when the 83.035% overflow roll hits');
 assert.deepStrictEqual(ProgressionRates.dropAmountRange(madnessGroup, enchantWeaponD, 10), { min: 3, max: 4 }, 'displayed high-rate range must match the runtime overflow roll');

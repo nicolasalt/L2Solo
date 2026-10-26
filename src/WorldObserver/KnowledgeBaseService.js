@@ -190,7 +190,8 @@ function spoilSelectionChance(group, itemIndex) {
     return Math.max(0, Math.min(100, end) - Math.min(100, start)) / 100;
 }
 
-function scaledRewardGroups(groups, kind, npcLevel, progressionRates, iconFor) {
+function scaledRewardGroups(groups, kind, npcLevel, progressionRates, iconFor, { boss = false } = {}) {
+    const options = { boss };
     return (groups || []).map((sourceGroup) => {
         const group = rewardGroup(sourceGroup);
         const roll = progressionRates.rewardGroupRoll(group, kind, {
@@ -205,16 +206,17 @@ function scaledRewardGroups(groups, kind, npcLevel, progressionRates, iconFor) {
             chancePercent: round(roll.chance),
             items: (sourceGroup.items || []).map((item, itemIndex) => {
                 const rawItem = group.items[itemIndex];
-                // A drop item's own capped chance, as a share of the group's.
-                const selectionChance = kind === 'drop'
-                    ? (groupChance > 0 ? progressionRates.dropItemChance(group, rawItem, roll.itemRate) / 100 / groupChance : 0)
-                    : spoilSelectionChance(group, itemIndex);
+                // A drop item rolls its own capped chance (a boss item also
+                // trades amount for chance).
+                const itemChance = kind === 'drop'
+                    ? progressionRates.dropItemChance(group, rawItem, roll.itemRate, options) / 100
+                    : groupChance * spoilSelectionChance(group, itemIndex);
                 const expectedConditionalAmount = kind === 'drop'
-                    ? progressionRates.expectedDropAmount(group, rawItem, roll.itemRate)
+                    ? progressionRates.expectedDropAmount(group, rawItem, roll.itemRate, options)
                     : ((Number(rawItem.min || 1) + Number(rawItem.max || rawItem.min || 1)) / 2)
                         * Number(roll.amountMultiplier || 1);
                 const amountRange = kind === 'drop'
-                    ? progressionRates.dropAmountRange(group, rawItem, roll.itemRate)
+                    ? progressionRates.dropAmountRange(group, rawItem, roll.itemRate, options)
                     : {
                         min: Number(item.minAmount || 0),
                         max: Number(item.maxAmount ?? item.minAmount ?? 0)
@@ -225,8 +227,8 @@ function scaledRewardGroups(groups, kind, npcLevel, progressionRates, iconFor) {
                     name: String(item.sourceName || `Item ${item.itemId}`),
                     minAmount: amountRange.min,
                     maxAmount: amountRange.max,
-                    chancePercent: round(groupChance * selectionChance * 100),
-                    expectedAmountPerKill: round(groupChance * selectionChance * expectedConditionalAmount),
+                    chancePercent: round(itemChance * 100),
+                    expectedAmountPerKill: round(itemChance * expectedConditionalAmount),
                     iconUrl: icon?.url || null
                 };
             })
@@ -412,7 +414,7 @@ function createKnowledgeBaseService({ dataDir, progressionRates, iconFor = null,
         const data = load();
         const npc = data.catalogue.npc(id);
         if (!npc) return null;
-        const drops = scaledRewardGroups(npc.drops, 'drop', npc.level, progressionRates, iconFor);
+        const drops = scaledRewardGroups(npc.drops, 'drop', npc.level, progressionRates, iconFor, { boss: Boolean(npc.raidBoss) });
         const spoils = scaledRewardGroups(npc.spoils, 'spoil', npc.level, progressionRates, iconFor);
         return {
             ...npcSummary(npc, data.skillById),
@@ -450,7 +452,8 @@ function createKnowledgeBaseService({ dataDir, progressionRates, iconFor = null,
         const sourceDetails = (kind) => data.catalogue.sourcesForItem(item.id, { kind }).map((source) => {
             const npc = data.catalogue.npc(source.mobId);
             if (!npc) return null;
-            const groups = scaledRewardGroups(kind === 'drops' ? npc.drops : npc.spoils, kind === 'drops' ? 'drop' : 'spoil', npc.level, progressionRates, iconFor);
+            const groups = scaledRewardGroups(kind === 'drops' ? npc.drops : npc.spoils, kind === 'drops' ? 'drop' : 'spoil', npc.level,
+                progressionRates, iconFor, { boss: kind === 'drops' && Boolean(npc.raidBoss) });
             return {
                 ...npcSummary(npc, data.skillById),
                 ...aggregateItemResults(groups, item.id)

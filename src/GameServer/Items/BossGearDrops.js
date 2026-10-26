@@ -33,7 +33,7 @@ function ordinaryChance(rewards, selfId) {
         const rate = Rates.groupRate(group, 'drop');
         for (const item of group.items || []) {
             if (Number(item.selfId) !== Number(selfId)) continue;
-            miss *= 1 - Rates.dropItemChance(group, item, rate) / 100;
+            miss *= 1 - Rates.dropItemChance(group, item, rate, { boss: true }) / 100;
         }
     }
     return (1 - miss) * 100;
@@ -60,7 +60,7 @@ function roll(rewards, rng = Math.random) {
         .filter((entry) => rng() * 100 < entry.chance)
         .map(({ group, item }) => ({
             selfId: Number(item.selfId),
-            amount: Rates.rollDropAmount(group, item, Rates.groupRate(group, 'drop'), rng)
+            amount: Rates.rollDropAmount(group, item, Rates.groupRate(group, 'drop'), rng, { boss: true })
         }));
 }
 

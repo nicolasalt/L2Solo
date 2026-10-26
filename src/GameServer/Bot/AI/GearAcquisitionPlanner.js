@@ -1603,9 +1603,10 @@ function itemDropChance(reward, itemId, kind = 'drop') {
 }
 
 function itemDropYield(reward, itemId, kind = 'drop', context = {}) {
-    const native = nativeItemDropYield(reward, itemId, kind, context);
+    const boss = kind === 'drop' && BossGearDrops.isBossNpc(reward?.selfId);
+    const native = nativeItemDropYield(reward, itemId, kind, { ...context, boss });
     // A boss's gear floor (armor 50%, weapons 10%) adds its extra roll.
-    const floor = kind === 'drop' && BossGearDrops.isBossNpc(reward?.selfId) ? BossGearDrops.floorFor(itemId) / 100 : 0;
+    const floor = boss ? BossGearDrops.floorFor(itemId) / 100 : 0;
     return floor > native.chance
         ? { chance: floor, expectedYield: native.expectedYield + (floor - native.chance) }
         : native;
@@ -1617,11 +1618,12 @@ function nativeItemDropYield(reward, itemId, kind = 'drop', context = {}) {
         const groupChance = Number(roll.chance || 0) / 100;
         const matchingItems = (group.items || []).filter((item) => Number(item.selfId) === Number(itemId));
         if (kind === 'drop') {
-            const itemChance = (item) => ProgressionRates.dropItemChance(group, item, roll.itemRate) / 100;
+            const options = { boss: context.boss === true };
+            const itemChance = (item) => ProgressionRates.dropItemChance(group, item, roll.itemRate, options) / 100;
             return {
                 chance: sum.chance + matchingItems.reduce((itemSum, item) => itemSum + itemChance(item), 0),
                 expectedYield: sum.expectedYield + matchingItems.reduce((itemSum, item) => (
-                    itemSum + itemChance(item) * ProgressionRates.expectedDropAmount(group, item, roll.itemRate)
+                    itemSum + itemChance(item) * ProgressionRates.expectedDropAmount(group, item, roll.itemRate, options)
                 ), 0)
             };
         }
