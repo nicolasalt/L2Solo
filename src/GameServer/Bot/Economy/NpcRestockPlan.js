@@ -50,6 +50,8 @@ function collect(state, options = {}) {
     const baskets = new Map();
     let order = 0;
     const add = (selfId, amount, offer, terms = {}, attribution = {}) => {
+        // options.noShots: a player's companion buys shots only on order.
+        if (options.noShots && Shot.SHOT_IDS.includes(Number(selfId))) return;
         if (order >= LIMIT || !offer || offer.town !== town || !(amount > 0)
             || options.seller && sellerKey(offer) !== sellerKey(options.seller)) return;
         const price = Number(offer.price);

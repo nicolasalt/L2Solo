@@ -398,8 +398,18 @@ try {
         dataSendToOthers() {}
     };
     publishTravelSession(shoppingCompanionSession, shoppingBot);
+    // A player's companion never buys shots on its own trip (the leader
+    // keeps it supplied); potions and the rest of the basket still restock.
+    let companionShotBuys = 0, companionBasketOptions = null;
+    const restockStubs = { shots: ShotStock.purchaseActorRestock, basket: NpcRestockPlan.purchaseForActor };
+    ShotStock.purchaseActorRestock = () => { companionShotBuys++; return Promise.resolve({ ok: true, delta: 10, cost: 10 }); };
+    NpcRestockPlan.purchaseForActor = (_actor, options) => { companionBasketOptions = options; return Promise.resolve({ ok: true, receipts: [] }); };
     ShoppingState.scheduleRestock(shoppingCompanionSession, shoppingBot, noTeleportGenerics, { say() {} });
     await settleScheduledWork();
+    ShotStock.purchaseActorRestock = restockStubs.shots;
+    NpcRestockPlan.purchaseForActor = restockStubs.basket;
+    assert.strictEqual(companionShotBuys, 0, 'a player companion buys no shots on its own');
+    assert.strictEqual(companionBasketOptions?.noShots, true, 'its NPC basket leaves shots out');
 
     assert.strictEqual(shoppingCompanionSession.plan, 'following', 'companion should resume following after its town errand');
     assert.strictEqual(shoppingCompanionSession.companionShopping, undefined, 'completed town errand should not leave a shopping state behind');

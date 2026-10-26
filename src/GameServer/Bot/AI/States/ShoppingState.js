@@ -1002,7 +1002,10 @@ module.exports = {
 
     scheduleRestock(session, bot, Generics, BotAI) {
         if (session.shoppingRestock) return;
-        if (!session.shoppingLiveShotStopChecked) {
+        // The leader keeps a player's companions in shots ("buy 1000 D
+        // spiritshots"): their own trips never buy shots.
+        const buysShots = !(session.partyCompanion === true && session.followPlayerSession?.botSession !== true);
+        if (buysShots && !session.shoppingLiveShotStopChecked) {
             session.shoppingLiveShotStopChecked = true;
             const town = invoke('GameServer/Bot/AI/TownTransitPolicy').townAt(bot);
             const target = ShotStock.liveRestockTarget(bot, town);
@@ -1038,10 +1041,11 @@ module.exports = {
                 const potionPrice = HealingPotionStock.localNpcPrice(potionPlan, potionTown);
                 const NpcRestock = invoke('GameServer/Bot/Economy/NpcRestockPlan');
                 const shotQuote = NpcRestock.quoteFor(plan.selfId, potionTown);
-                const board = await ShotStock.purchaseActorRestock(bot, { plan, town: potionTown || null,
-                    unitPrice: shotQuote?.price, potionUnitPrice: potionPrice || undefined, skipNpc: true });
+                const board = buysShots ? await ShotStock.purchaseActorRestock(bot, { plan, town: potionTown || null,
+                    unitPrice: shotQuote?.price, potionUnitPrice: potionPrice || undefined, skipNpc: true })
+                    : { ok: true, delta: 0, cost: 0 };
                 if (session.actor !== bot || !LifeState.hotRow(bot.fetchId())) return;
-                const basket = await NpcRestock.purchaseForActor(bot, { town: potionTown });
+                const basket = await NpcRestock.purchaseForActor(bot, { town: potionTown, noShots: !buysShots });
                 if (session.actor !== bot || !LifeState.hotRow(bot.fetchId())) return;
                 const lines = basket.receipts.flatMap(row => row.lines || []);
                 const potion = lines.find(row => Number(row.selfId) === Number(potionPlan.selfId));
@@ -1057,7 +1061,7 @@ module.exports = {
                 } else {
                     if (result.delta > 0) {
                         TownChatter.say(session, BotAI, 'shots-restocked', Speech.lines('town.shots-restocked', { count: result.delta, item: ShotStock.describe(plan), cost: formatAdena(result.cost) }));
-                    } else {
+                    } else if (buysShots) {
                         TownChatter.say(session, BotAI, 'shots-already-stocked', Speech.lines('town.shots-already-stocked', { item: ShotStock.describe(plan) }));
                     }
                     session.dataSendToOthers(ServerResponse.skillStarted(bot, bot.fetchId(), { fetchSelfId: () => 2001, fetchCalculatedHitTime: () => 500, fetchReuseTime: () => 500 }), bot);
