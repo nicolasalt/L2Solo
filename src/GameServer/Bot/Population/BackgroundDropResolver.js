@@ -94,9 +94,15 @@ function rollRewardsForFight({ spot, killerLevel, npcSelfId = 0, rng = Math.rand
     const defeatedNpcLevel = sourceMobLevel(rewardData, spot, npcSelfId);
     const result = { adena: 0, items: [] };
     const boss = BossGearDrops.isBossNpc(rewardData.selfId);
+    const left = new Map();
     for (const group of rewardData.rewards || []) {
         const rate = ProgressionRates.groupRate(group, 'drop');
-        for (const { item, amount } of ProgressionRates.rollDropGroup(group, rate, rng, { boss })) {
+        for (const rolled of ProgressionRates.rollDropGroup(group, rate, rng, { boss })) {
+            const item = rolled.item;
+            const cap = left.get(item.selfId) ?? ProgressionRates.dropAmountCap(item, { boss });
+            const amount = Math.min(rolled.amount, cap);
+            left.set(item.selfId, cap - amount);
+            if (amount <= 0) continue;
             if (Number(item.selfId) === 57) {
                 result.adena += amount;
             } else if (result.items.length < maxItems) {

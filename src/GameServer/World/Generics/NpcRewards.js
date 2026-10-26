@@ -53,10 +53,16 @@ function npcRewards(session, npc) {
         };
 
         const boss = BossGearDrops.isBossNpc(npc.fetchSelfId());
+        // A scroll in several groups still totals at most its cap per kill.
+        const left = new Map();
         rewards.forEach((reward) => {
             const rate = ProgressionRates.groupRate(reward, 'drop');
-            ProgressionRates.rollDropGroup(reward, rate, Math.random, { boss })
-                .forEach(({ item, amount }) => awardDrop(this, session, npc, item.selfId, amount));
+            ProgressionRates.rollDropGroup(reward, rate, Math.random, { boss }).forEach(({ item, amount }) => {
+                const cap = left.get(item.selfId) ?? ProgressionRates.dropAmountCap(item, { boss });
+                const awarded = Math.min(amount, cap);
+                left.set(item.selfId, cap - awarded);
+                if (awarded > 0) awardDrop(this, session, npc, item.selfId, awarded);
+            });
         });
         if (boss) {
             BossGearDrops.roll(rewards).forEach(({ selfId, amount }) => awardDrop(this, session, npc, selfId, amount));

@@ -96,6 +96,17 @@ assert(Math.abs(ev(boss) - ev({})) < 1e-9, 'the expected value is unchanged');
 assert.deepStrictEqual(ProgressionRates.dropAmountRange(bladeGroup, blade, 1, boss), { min: 1, max: 3 });
 const single = { overall: 10, items: [{ selfId: 71, min: 1, max: 1, chance: 100 }] };
 assert.strictEqual(ProgressionRates.dropItemChance(single, single.items[0], 1, boss), 10, 'a single item keeps its chance');
+// A boss drops at most 20 of each enchant scroll (Pan Dryad's armor scrolls
+// reached 1055 at x50); other items and ordinary monsters are not capped.
+const scrollGroup = { overall: 100, items: [{ selfId: 956, min: 1, max: 20, chance: 100 }] };
+const scroll = scrollGroup.items[0];
+assert.deepStrictEqual(ProgressionRates.dropAmountRange(scrollGroup, scroll, 50, boss), { min: 20, max: 20 });
+assert.strictEqual(ProgressionRates.rollDropAmount(scrollGroup, scroll, 50, () => 0.9, boss), 20);
+assert(ProgressionRates.expectedDropAmount(scrollGroup, scroll, 50, boss) <= 20);
+assert(ProgressionRates.dropAmountRange(scrollGroup, scroll, 50).max > 20, 'ordinary monsters keep the rate');
+assert(ProgressionRates.dropAmountRange({ overall: 100, items: [{ selfId: 1864, min: 1, max: 20, chance: 100 }] },
+    { selfId: 1864, min: 1, max: 20, chance: 100 }, 50, boss).max > 20, 'only enchant scrolls are capped');
+
 // A boss rolls every item on its own, even below a 100% group chance.
 assert.strictEqual(ProgressionRates.rollDropGroup({ overall: 50, items: [{ selfId: 1, min: 1, max: 1, chance: 50 }, { selfId: 2, min: 1, max: 1, chance: 50 }] },
     1, () => 0, boss).length, 2);

@@ -129,16 +129,26 @@ function dropAmountMultiplier(group, item, rate, options = {}) {
     return chance > 0 ? Math.max(options.boss ? 0 : 1, dropItemScaledChance(group, item, rate) / chance) : 1;
 }
 
+// A boss kill drops at most 20 of each enchant scroll, whatever the rate.
+const BOSS_ENCHANT_SCROLL_CAP = 20;
+
+function dropAmountCap(item, options = {}) {
+    if (!options.boss) return Infinity;
+    const scrolls = require('./Items/C4EnchantScrolls').ENCHANT_SCROLLS;
+    return scrolls[Number(item?.selfId)] ? BOSS_ENCHANT_SCROLL_CAP : Infinity;
+}
+
 function dropAmountRange(group, item, rate, options = {}) {
     const { min, max } = dropAmountBounds(item);
     const multiplier = dropAmountMultiplier(group, item, rate, options);
-    return { min: Math.max(1, Math.floor(min * multiplier)), max: Math.max(1, Math.ceil(max * multiplier)) };
+    const cap = dropAmountCap(item, options);
+    return { min: Math.min(cap, Math.max(1, Math.floor(min * multiplier))), max: Math.min(cap, Math.max(1, Math.ceil(max * multiplier))) };
 }
 
 // The amount one drop of the item gives on average.
 function expectedDropAmount(group, item, rate, options = {}) {
     const { min, max } = dropAmountBounds(item);
-    return dropAmountMultiplier(group, item, rate, options) * (min + max) / 2;
+    return Math.min(dropAmountCap(item, options), dropAmountMultiplier(group, item, rate, options) * (min + max) / 2);
 }
 
 function rollDropAmount(group, item, rate, rng = Math.random, options = {}) {
@@ -146,7 +156,7 @@ function rollDropAmount(group, item, rate, rng = Math.random, options = {}) {
     const base = min === max ? min : Math.floor(rng() * (max - min + 1)) + min;
     const scaled = base * dropAmountMultiplier(group, item, rate, options);
     const whole = Math.floor(scaled);
-    return Math.max(1, whole + (rng() < scaled - whole ? 1 : 0));
+    return Math.min(dropAmountCap(item, options), Math.max(1, whole + (rng() < scaled - whole ? 1 : 0)));
 }
 
 // One kill's drops from a group: [{ item, amount }]. While the scaled group
@@ -195,6 +205,7 @@ module.exports = {
     dropItemBaseChance,
     dropItemChance,
     dropAmountMultiplier,
+    dropAmountCap,
     dropAmountRange,
     expectedDropAmount,
     rollDropAmount,
