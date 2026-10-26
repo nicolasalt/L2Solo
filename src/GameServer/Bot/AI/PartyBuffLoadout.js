@@ -19,7 +19,7 @@ const aliases = {
 const stackFamilies = {
     pAtk:'might', pDef:'shield', SpeedUp:'wind_walk', pAtkSpeedUp:'haste',
     mAtkSpeedUp:'acumen', mAtk:'empower', MagicDefUp:'magic_barrier',
-    MaxHPUp:'blessed_body', CoV:'prophecy'
+    MaxHPUp:'blessed_body', CoV:'prophecy', berserker:'berserker_spirit'
 };
 const priorities = {
     wind_walk:100, shield:95, magic_barrier:90, blessed_body:90,

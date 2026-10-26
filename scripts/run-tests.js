@@ -322,6 +322,7 @@ const tests = [
     'tests/test_supply_shopping_list.js',
     'tests/test_bot_buy_shop.js',
     'tests/test_leader_order_store.js',
+    'tests/test_leader_heal_rules.js',
     'tests/test_llm_equipment_tools.js',
     'tests/test_llm_trade_tools.js',
     'tests/test_llm_negotiation_tools.js',

@@ -1475,7 +1475,7 @@ const FollowingState = {
         const topOffHealSkill = groupHealSkill || routineHealSkill;
         // The leader's Recharge rules ("Recharge mages below N% MP", "only
         // damage mages") apply in combat too.
-        const leaderSkillRules = role === 'healer' && rechargeSkill && session.hotPolicyOverlay
+        const leaderSkillRules = role === 'healer' && session.hotPolicyOverlay
             ? invoke('GameServer/Bot/AI/HotBotPolicyOverlay').skillRules(session)
             : null;
         const magesOnly = leaderSkillRules?.rechargeMagesOnly === true;
@@ -1492,7 +1492,7 @@ const FollowingState = {
             Number(partyThreat.targetId || 0) !== Number(bot.fetchId())
             ? lowestManaPartyMember(playerSession, bot, pulling.puller?.actor, 900, { emergencyTankOnly: true })
             : null;
-        const rechargeBelow = leaderSkillRules?.rechargeBelow || null;
+        const rechargeBelow = rechargeSkill ? leaderSkillRules?.rechargeBelow || null : null;
         // The leader may move the healer's own-MP floor for Recharge (25% by default).
         const rechargeOwnMpFloor = leaderSkillRules?.rechargeOwnMpFloor ?? 0.25;
         const ruleManaPartyMember = rechargeBelow
@@ -1503,9 +1503,15 @@ const FollowingState = {
                 .sort((a, b) => a.mpRatio - b.mpRatio)[0] || null
             : null;
         const manaPartyMember = emergencyTankManaMember || ruleManaPartyMember || safeManaPartyMember;
+        // The leader's "heal the tank under N%" order: a targeted heal first.
+        const leaderTankHeal = leaderSkillRules?.healTankBelow
+            ? invoke('GameServer/Bot/AI/LeaderHealRules').tankHeal(session, bot,
+                partyMembersInSupportRange(playerSession, bot).map((entry) => entry.actor))
+            : null;
         // Healing is the healer's first obligation.  Do not queue a regular
         // party buff and then overwrite it with a heal in this same AI tick.
         const healerNeedsAction = role === 'healer' && (
+            !!leaderTankHeal ||
             (woundedPartyMember?.hpRatio < 0.45 && canAffordHeal(emergencyHealSkill)) ||
             (woundedPartyMember?.hpRatio < 0.70 && botVitals.mpRatio >= 0.35 && canAffordHeal(topOffHealSkill)) ||
             (botVitals.hpRatio < 0.55 && botVitals.mpRatio >= 0.25 && canAffordHeal(emergencyHealSkill))
@@ -1585,7 +1591,12 @@ const FollowingState = {
         }
 
         if (!acted && role === 'healer') {
-            if (woundedPartyMember?.hpRatio < 0.45 && healerCanCast(emergencyHealSkill)) {
+            if (leaderTankHeal && healerCanCast(leaderTankHeal.skill)) {
+                acted = true;
+                recordRoleDecision(session, bot, 'heal_party', 'leader_tank_heal', { targetId: leaderTankHeal.target.fetchId() });
+                queueSupportSkillOn(session, bot, Generics, leaderTankHeal.target, leaderTankHeal.skill, false, 'leader_tank_heal', { kind: 'emergency_heal' });
+                returnToPartyAfterSupport(session, bot, player, leaderTankHeal.target);
+            } else if (woundedPartyMember?.hpRatio < 0.45 && healerCanCast(emergencyHealSkill)) {
                 acted = true;
                 recordRoleDecision(session, bot, 'heal_party', 'emergency_heal', { targetId: woundedPartyMember.actor.fetchId() });
                 queueSupportSkillOn(session, bot, Generics, woundedPartyMember.actor, emergencyHealSkill, false, 'emergency_heal', { kind: 'emergency_heal' });

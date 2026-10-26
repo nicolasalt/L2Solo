@@ -69,6 +69,15 @@ function alliedForHeal(provider, target) {
 
 function support(session, bot, context, Generics, now) {
     if (bot.state?.fetchCasts?.()) return false;
+    // The leader's "heal the tank under N%" order comes first, with a
+    // targeted heal, even when another healer already claimed the tank.
+    const leaderRules = session.hotPolicyOverlay ? invoke('GameServer/Bot/AI/LeaderHealRules') : null;
+    const tankHeal = leaderRules?.tankHeal(session, bot, context.members.map(member => member.actor));
+    if (tankHeal && cast(session, bot, tankHeal.target, tankHeal.skill, Generics, tankHeal.reason)) {
+        const claims = context.owner.pvpHealClaims || (context.owner.pvpHealClaims = new Map());
+        claims.set(tankHeal.target.fetchId(), now + Math.max(1500, Number(tankHeal.skill.fetchHitTime?.() || 0)));
+        return true;
+    }
     const wounded = context.members.map(member => member.actor)
         .filter(actor => Intent.alive(actor) && ratio(actor) < 0.7 && Threats.distance(bot, actor) <= 900)
         .sort((a, b) => ratio(a) - ratio(b));
@@ -110,7 +119,10 @@ function support(session, bot, context, Generics, now) {
             return true;
         }
     }
-    const recharge = Capabilities.manaRechargeSkill(bot);
+    // The leader's Recharge rule replaces the raid's healer-only Recharge.
+    const ruledRecharge = leaderRules?.recharge(session, bot, context.members.map(member => member.actor));
+    if (ruledRecharge?.target && cast(session, bot, ruledRecharge.target, ruledRecharge.skill, Generics, 'party_mana')) return true;
+    const recharge = !ruledRecharge && Capabilities.manaRechargeSkill(bot);
     const raid = context.raid === true;
     const drained = context.members.map(member => member.actor).filter(actor => actor !== bot && Intent.alive(actor) &&
         Roles.shouldRestForMana(actor) && actor.fetchMp() / Math.max(1, actor.fetchMaxMp()) < 0.2 &&

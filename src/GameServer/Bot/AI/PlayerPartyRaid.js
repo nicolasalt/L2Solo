@@ -102,7 +102,9 @@ function tick(session, bot, Generics, AI, now = Date.now()) {
     }
     // The common support selector casts only in range. Approach a wounded
     // member through native movement instead of leaving a low-HP opener stuck.
-    if (Roles.inferRole(bot) === 'healer' && !Awareness.underDirectNpcAttack(session) && Restrictions.canMove(bot)) {
+    const actsAsHealer = Roles.inferRole(bot) === 'healer'
+        || (!!session.hotPolicyOverlay && invoke('GameServer/Bot/AI/HotBotPolicyOverlay').skillRules(session).actAsHealer === true);
+    if (actsAsHealer && !Awareness.underDirectNpcAttack(session) && Restrictions.canMove(bot)) {
         const wounded = [...near].sort((a, b) => ratio(a.actor) - ratio(b.actor))
             .find(member => ratio(member.actor) < 0.7);
         const heal = wounded && invoke('GameServer/Bot/AI/BotSkillCapabilities')

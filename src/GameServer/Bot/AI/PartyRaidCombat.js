@@ -142,6 +142,10 @@ function tick(session, bot, Generics, AI, context, now = Date.now()) {
     if (bot.state.fetchCasts?.() && !Restrictions.canCast(bot)) bot.attack?.abortCast?.(session, bot);
     if (bot.state.fetchCasts?.()) return true;
     const role = Roles.inferRole(bot);
+    // The leader's "don't attack" / "heal like a healer" orders hold in a
+    // raid: such a bot never takes a damage or debuff slot.
+    const leaderRules = session.hotPolicyOverlay ? invoke('GameServer/Bot/AI/HotBotPolicyOverlay').skillRules(session) : {};
+    const supportOnly = role === 'healer' || leaderRules.noAttacks === true || leaderRules.actAsHealer === true;
     let combatTarget = raidPlan.boss;
     const isRaidTank = session === raidTank;
     const bossHeldByTank = !!raidTank && Threats.alive(raidTank.actor) && Number(raidPlan.boss.fetchDestId?.()) === Number(raidTank.actor.fetchId());
@@ -210,7 +214,7 @@ function tick(session, bot, Generics, AI, context, now = Date.now()) {
     // are physical fighters after their party music is applied, so when
     // casting is unavailable they must fall through to executeCombat and
     // use their weapon normally.
-    if (!isRaidTank && Restrictions.canCast(bot)) {
+    if (!isRaidTank && Restrictions.canCast(bot) && leaderRules.noAttacks !== true) {
         const control = ClassTactics.supportCrowdControl(bot, raidPlan.minions, {
             raid: true,
             primaryTargetId: raidPlan.focusMinion?.fetchId?.() || null,
@@ -238,7 +242,7 @@ function tick(session, bot, Generics, AI, context, now = Date.now()) {
     }
     // Support adapters already attempted healing/resurrection. Full MP or an
     // unsafe sitting position must never turn the healer into a damage slot.
-    if (role === 'healer') {
+    if (supportOnly) {
         if (bot.state.fetchHits?.()) Tactics.stop(session, bot);
         if (session.currentTargetId || bot.fetchDestId?.()) bot.unselect?.();
         session.currentTargetId = undefined;

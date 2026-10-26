@@ -568,7 +568,11 @@ const RULES = {
     1050: { skillType: RECALL, trait: 'recall', target: 'self', ssBoost: 0, mpInitialConsumeByLevel: [21, 31], hitTimeByLevel: [20000, 1500] },
     1056: { skillType: CANCEL, trait: 'cancel', target: 'enemy', ssBoost: 1, baseLandRate: 25, maxCancelled: 0 },
     1059: { skillType: EFFECT, trait: 'buff', effect: 'empower', effectType: 'buff', target: 'friendly', baseLandRate: 100, statsByLevel: { mAtkMul: [1.55, 1.65, 1.75] } },
-    1062: { skillType: EFFECT, trait: 'buff', effect: 'berserker_spirit', effectType: 'buff', target: 'friendly', baseLandRate: 100, statsByLevel: {
+    // Its own stack slot: without one, its P.Def/M.Def penalty and small
+    // P.Atk/M.Atk gain read as a weaker Shield/Might/Empower already on the
+    // target, and the support planner never cast it.
+    1062: { skillType: EFFECT, trait: 'buff', effect: 'berserker_spirit', effectType: 'buff', target: 'friendly', baseLandRate: 100,
+        stackFamily: 'berserker', stackOrderByLevel: [1, 2], statsByLevel: {
         mAtkMul: [1.1, 1.16],
         pAtkMul: [1.05, 1.08],
         pDefMul: [0.95, 0.92],
