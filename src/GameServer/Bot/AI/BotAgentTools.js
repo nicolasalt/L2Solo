@@ -1873,6 +1873,7 @@ function rejectionReply(result = {}) {
         case 'missing_skill_name': return 'Which skill?';
         case 'skill_on_cooldown': return `${result.skillName || 'That skill'} is still on cooldown.`;
         case 'low_mp_for_skill': return `Not enough MP for ${result.skillName || 'that skill'} right now.`;
+        case 'target_too_far': return `You are too far away for ${result.skillName || 'that skill'}. Come closer.`;
         case 'skill_target_missing': return `I have no valid target for ${result.skillName || 'that skill'}. Target something first.`;
         case 'attack_target_not_found': return `I can't see${requested} anywhere near me.`;
         case 'no_attack_target': return 'Target something first and I will go.';
