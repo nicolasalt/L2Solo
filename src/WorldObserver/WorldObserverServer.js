@@ -1277,6 +1277,39 @@ function itemIconFor(item, selfId, name, kind) {
     };
 }
 
+// Every raid boss's drop table at the server's current rates: one row per
+// item (its groups merged), most likely first. Rebuilt when the rates change.
+let raidBossLootCache = null;
+function raidBossLoot() {
+    const rates = JSON.stringify(ProgressionRates.profile());
+    if (raidBossLootCache?.rates === rates) return raidBossLootCache.value;
+    const knowledge = knowledgeBaseService();
+    const bosses = {};
+    for (const { id } of raidBossCatalog()) {
+        const detail = knowledge.npcDetail(id);
+        if (!detail) continue;
+        const byItem = new Map();
+        for (const item of (detail.drops || []).flatMap((group) => group.items || [])) {
+            const row = byItem.get(item.itemId) || { itemId: item.itemId, name: item.name,
+                miss: 1, minAmount: item.minAmount, maxAmount: item.maxAmount };
+            row.miss *= 1 - Math.max(0, Math.min(100, Number(item.chancePercent || 0))) / 100;
+            row.minAmount = Math.min(row.minAmount, item.minAmount);
+            row.maxAmount = Math.max(row.maxAmount, item.maxAmount);
+            byItem.set(item.itemId, row);
+        }
+        // Compact rows, [itemId, name, chance %, min, max]: the table holds
+        // every boss, so keep it small.
+        bosses[id] = [...byItem.values()]
+            .map((row) => ({ ...row, chance: Number(((1 - row.miss) * 100).toPrecision(3)) }))
+            .filter((row) => row.chance > 0)
+            .sort((a, b) => b.chance - a.chance || a.name.localeCompare(b.name))
+            .map((row) => [row.itemId, row.name, row.chance, row.minAmount, row.maxAmount]);
+    }
+    const value = { rateProfile: knowledge.meta?.()?.rateProfile || ProgressionRates.profile(), bosses };
+    raidBossLootCache = { rates, value };
+    return value;
+}
+
 function knowledgeBaseService() {
     if (!knowledgeBaseServiceCache) {
         knowledgeBaseServiceCache = createKnowledgeBaseService({
@@ -2629,6 +2662,15 @@ function serveMarketReads(request, response, url) {
 
 // Knowledge base reads: catalogue meta, item and NPC lists and details. Returns true when it answered the request.
 function serveKnowledgeReads(response, url) {
+    if (url.pathname === '/observer/api/raid-bosses/loot') {
+        try {
+            sendJson(response, raidBossLoot());
+        } catch (err) {
+            sendJson(response, { error: err.message }, 500);
+        }
+        return true;
+    }
+
     if (url.pathname === '/observer/api/knowledge/meta') {
         try {
             sendJson(response, knowledgeBaseService().meta());

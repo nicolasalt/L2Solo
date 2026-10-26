@@ -66,6 +66,8 @@ const state = {
     raidBossSearch: '',
     selectedRaidBossId: null,
     raidBossFocusReturn: null,
+    raidBossLoot: null,
+    raidBossLootRequest: null,
     clanOpen: false,
     clanSort: 'level',
     clanSearch: '',
@@ -743,6 +745,58 @@ function filteredRaidBosses() {
     });
 }
 
+// Each raid boss's drops at the server's rates, loaded once on demand.
+function loadRaidBossLoot() {
+    if (state.raidBossLoot || state.raidBossLootRequest) return;
+    state.raidBossLootRequest = fetch('/observer/api/raid-bosses/loot', { cache: 'no-store' })
+        .then((response) => response.ok ? response.json() : Promise.reject(new Error(`loot ${response.status}`)))
+        .then((data) => {
+            state.raidBossLoot = data;
+            renderRaidBosses();
+            renderSelectedCard();
+        })
+        .catch((error) => console.warn('Observer :: raid boss loot failed: %s', error.message))
+        .finally(() => { state.raidBossLootRequest = null; });
+}
+
+function raidBossLootRows(id) {
+    return (state.raidBossLoot?.bosses?.[id] || [])
+        .map(([itemId, name, chance, min, max]) => ({ itemId, name, chance, min, max }));
+}
+
+function lootAmount(row) {
+    if (Number(row.max) <= 1) return '';
+    return row.min === row.max ? ` ×${number(row.min)}` : ` ×${number(row.min)}–${number(row.max)}`;
+}
+
+function lootChance(chance) {
+    return `${Number(chance) >= 10 ? Math.round(chance) : chance}%`;
+}
+
+function lootRateLabel() {
+    const preset = state.raidBossLoot?.rateProfile?.preset;
+    return preset ? `${preset} rates` : 'server rates';
+}
+
+function raidBossLootCell(boss) {
+    if (!state.raidBossLoot) return '<span class="raid-boss-loot"><span>Loading loot…</span></span>';
+    const rows = raidBossLootRows(boss.id);
+    if (!rows.length) return '<span class="raid-boss-loot"><span>No drops</span></span>';
+    const full = rows.map((row) => `${row.name}${lootAmount(row)} — ${lootChance(row.chance)}`).join('\n');
+    const top = rows.slice(0, 3).map((row) => `<span><b>${text(lootChance(row.chance))}</b> ${text(row.name)}${text(lootAmount(row), '')}</span>`).join('');
+    return `<span class="raid-boss-loot" title="${escapeHtml(`Drops at ${lootRateLabel()}:\n${full}`)}">${top}${rows.length > 3 ? `<span class="raid-boss-loot-more">+${number(rows.length - 3)} more</span>` : ''}</span>`;
+}
+
+function raidBossLootList(boss) {
+    if (!state.raidBossLoot) return '<p class="raid-boss-card-loot-empty">Loading loot…</p>';
+    const rows = raidBossLootRows(boss.id);
+    if (!rows.length) return '<p class="raid-boss-card-loot-empty">No drops.</p>';
+    return `<div class="raid-boss-card-loot">
+        <span class="eyeline">Drops at ${text(lootRateLabel())}</span>
+        <ol>${rows.map((row) => `<li><span>${text(row.name)}${text(lootAmount(row), '')}</span><b>${text(lootChance(row.chance))}</b></li>`).join('')}</ol>
+    </div>`;
+}
+
 function renderRaidBosses() {
     const raidBossState = state.snapshot?.raidBosses;
     const counts = raidBossState?.counts || { alive: 0, respawning: 0, missing: 0 };
@@ -756,7 +810,8 @@ function renderRaidBosses() {
         return;
     }
 
-    els.raidBossSummary.textContent = `${number(counts.alive)} in world · ${number(counts.respawning)} respawning · ${number(counts.missing)} missing · ${number(raidBossState.total)} total`;
+    els.raidBossSummary.textContent = `${number(counts.alive)} in world · ${number(counts.respawning)} respawning · ${number(counts.missing)} missing · ${number(raidBossState.total)} total`
+        + (state.raidBossLoot ? ` · loot chances at ${lootRateLabel()}` : '');
     const bosses = filteredRaidBosses();
     els.raidBossScope.textContent = `${number(bosses.length)} boss${bosses.length === 1 ? '' : 'es'}`;
     els.raidBossList.innerHTML = bosses.length
@@ -771,6 +826,7 @@ function renderRaidBosses() {
                 <i class="raid-boss-dot ${escapeHtml(boss.status)}"></i>
                 <span class="raid-boss-identity"><strong>${text(boss.name)}</strong><span>Lv ${number(boss.level, '?')}</span></span>
                 <span class="raid-boss-location"><strong>${text(boss.location?.name, 'Unknown location')}</strong><span>${boss.location?.area?.mapAnchor ? 'Dungeon entrance on map' : 'Surface location'}</span></span>
+                ${raidBossLootCell(boss)}
                 <span class="raid-boss-timer"><strong>${text(timer)}</strong><span>${text(raidBossStatusLabel(boss.status))}</span></span>
                 <span>${clickable ? '<span class="raid-boss-map-button">Show on map</span>' : ''}</span>
             </button>`;
@@ -884,6 +940,7 @@ function openRaidBosses({ updateRoute = true } = {}) {
     if (state.clanOpen) closeClans({ updateRoute: false });
     state.raidBossOpen = true;
     state.raidBossFocusReturn = document.activeElement;
+    loadRaidBossLoot();
     renderRaidBosses();
     els.raidBossesModal.hidden = false;
     document.body.classList.add('rankings-open');
@@ -2411,6 +2468,7 @@ function focusRaidBoss(id) {
     setApplicationView({ name: 'world' });
     resetProfileCollections();
     state.selectedRaidBossId = boss.id;
+    loadRaidBossLoot();
     state.selectedId = null;
     state.clusterScope = null;
     state.detail = null;
@@ -3041,6 +3099,7 @@ function renderSelectedCard() {
                 <span class="eyeline">Selected raid boss</span>
                 <strong>${text(raidBoss.name)}</strong>
                 <p>Lv ${number(raidBoss.level, '?')} · ${text(raidBoss.location?.name, 'Unknown location')} · ${text(raidBossStatusLabel(raidBoss.status))}</p>
+                ${raidBossLootList(raidBoss)}
             `;
             return;
         }

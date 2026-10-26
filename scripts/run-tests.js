@@ -946,6 +946,7 @@ const tests = [
     'tests/test_world_observer_parties.js',
     'tests/test_world_observer_character_search.js',
     'tests/test_world_observer_application_routes.js',
+    'tests/test_world_observer_raid_boss_loot.js',
       'tests/test_world_observer_knowledge_base.js',
         'tests/test_world_observer_ui_language.js',
       'tests/test_world_observer_world_state.js',
