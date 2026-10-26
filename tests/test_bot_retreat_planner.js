@@ -208,6 +208,19 @@ const healthySession = {
 FleeingState.tick(healthySession, healthySession.actor, {}, {});
 assert.strictEqual(healthySession.plan, 'hunting', 'a healthy PK escape should resume hunting after reaching safety');
 
+// A party companion that fled from a hunting or resting state rejoins its
+// leader; it used to resume hunting and fight its last support target.
+const companionLeader = { actor: actor(2000006, 0, 0) };
+const fledCompanion = {
+    actor: actor(2000005, 0, 0),
+    plan: 'fleeing',
+    partyCompanion: true,
+    followPlayerSession: companionLeader,
+    fleeStart: Date.now() - 2000
+};
+FleeingState.tick(fledCompanion, fledCompanion.actor, {}, {});
+assert.strictEqual(fledCompanion.plan, 'following', 'a companion resumes following after any escape');
+
 const incomingAdd = {
     ...hostile(1004, -200, 0),
     fetchAttackable: () => true

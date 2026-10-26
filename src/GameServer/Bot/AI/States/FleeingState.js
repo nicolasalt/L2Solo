@@ -96,7 +96,10 @@ module.exports = {
         const raidSafetyResumePlan = session.raidSafetyResumePlan;
         const recoveryNeeded = needsRecovery(session, bot);
         if (!recoveryNeeded && session.recoveryLocked) session.recoveryLocked = false;
-        session.plan = raidSafetyResumePlan === 'following' && session.partyCompanion === true && session.followPlayerSession
+        // A party companion always returns to its leader. Only the raid
+        // retreat recorded that; a flee from the hunting or resting states
+        // used to leave a companion hunting with its last support target.
+        session.plan = session.partyCompanion === true && session.followPlayerSession
             ? 'following'
             : (recoveryNeeded || raidSafetyResumePlan === 'resting' ? 'resting' : 'hunting');
         session.raidSafetyResumePlan = undefined;

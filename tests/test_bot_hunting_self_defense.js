@@ -538,6 +538,27 @@ async function targetLifecycleChecks() {
 
         assert.strictEqual(fetchedNpcId, unreachableNpc.fetchId(), 'NPC fallback should use the captured target id');
         assert.strictEqual(stalledSession.currentTargetId, 9999, 'stale target callbacks should not clear a newer target');
+
+        // A support cast leaves the leader selected. A companion that ends up
+        // hunting must drop that target, not fight its own leader.
+        const leaderActor = actor(2000020);
+        const leaderSession = { accountId: 'player_leader', actor: leaderActor };
+        const prophet = actor(2000021);
+        const prophetSession = { accountId: 'bot_prophet', actor: prophet, plan: 'hunting', partyCompanion: true,
+            followPlayerSession: leaderSession, currentTargetId: leaderActor.fetchId() };
+        World.user = { sessions: [leaderSession, prophetSession] };
+        World.fetchUser = (id) => id === leaderActor.fetchId()
+            ? Promise.resolve(leaderActor) : Promise.reject(new Error('user_not_found'));
+        let pvpTarget = null;
+        HuntingState.tick(prophetSession, prophet, {}, {
+            say() {},
+            getStatus() { return {}; },
+            executeCombat() {},
+            executePvPCombat(_session, _bot, target) { pvpTarget = target; }
+        });
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.strictEqual(pvpTarget, null, 'a companion never attacks its party leader');
+        assert.strictEqual(prophetSession.currentTargetId, undefined, 'the leader is dropped as a target');
     } finally {
         Math.random = originalRandom;
     }

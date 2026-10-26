@@ -889,6 +889,12 @@ module.exports = {
             const targetId = session.currentTargetId;
             World.fetchUser(targetId).then((targetActor) => {
                 if (session.currentTargetId !== targetId) return;
+                // A support cast leaves its recipient selected. Never turn
+                // that into a fight with the leader or another party member.
+                if (BotPvpRisk.sameParty(session, World.user.sessions.find((other) => other.actor === targetActor))) {
+                    clearTarget(session, bot, targetId);
+                    return;
+                }
                 if (targetActor && targetActor.fetchIsOnline() && !targetActor.state.fetchDead()) {
                     if (bot.state.fetchTowards() || bot.state.fetchHits() || bot.state.fetchCasts()) {
                         return;
