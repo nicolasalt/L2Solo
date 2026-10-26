@@ -40,7 +40,9 @@ async function botSales(session) {
 async function sellJunk(session) {
     const backpack = session.actor.backpack;
     const bot = String(session.accountId || '').startsWith('bot_');
-    const sales = (bot ? await botSales(session) : playerSales(session))
+    // On the leader's "sell your junk" a companion sells like a player
+    // would, not what its own market plan would part with.
+    const sales = (bot && session.companionShopping?.leaderOrdered !== true ? await botSales(session) : playerSales(session))
         .filter((sale) => sale.amount > 0);
 
     if (sales.length === 0) {

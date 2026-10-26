@@ -2110,4 +2110,17 @@ const FollowingState = {
     }
 };
 
+// "sell your junk": the leader's order sends a companion to the nearest
+// merchant now, in town or not; it sells everything unequipped the merchant
+// buys except shots, then comes back.
+FollowingState.beginLeaderSellTrip = function beginLeaderSellTrip(session, playerSession) {
+    const bot = session.actor;
+    const BotAI = invoke('GameServer/Bot/BotAI');
+    const town = BotAI.getClosestTown(bot.fetchLocX(), bot.fetchLocY(), bot.fetchLocZ());
+    const target = town ? townNpcTarget(town, bot) : null;
+    if (!target) return null;
+    beginCompanionTownErrand(session, bot, playerSession, { kind: 'sell_junk', target, leaderOrdered: true });
+    return target;
+};
+
 module.exports = FollowingState;

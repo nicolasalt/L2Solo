@@ -70,7 +70,7 @@ const ACTIONS = [
     'go_to',
     'plan_steps',
     'set_buff_targets',
-    'cancel_shopping', 'open_buy_shop', 'close_buy_shop'
+    'cancel_shopping', 'open_buy_shop', 'close_buy_shop', 'sell_loot'
 ];
 const NON_MUTATING_ACTIONS = new Set(['none', 'say', 'list_safe_loadouts', 'list_party_candidates']);
 
@@ -82,7 +82,7 @@ const PK_LOCKED_ACTIONS = new Set([
     'list_safe_loadouts', 'equip_candidate', 'optimize_equipment', 'list_party_candidates', 'request_player_join_party',
     'propose_trade', 'give_resources', 'offer_resources', 'update_trade_offer', 'cancel_trade',
     'quote_item', 'counter_offer', 'accept_price', 'decline_price', 'open_negotiated_trade',
-'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps', 'set_buff_targets', 'cancel_shopping', 'open_buy_shop', 'close_buy_shop'
+'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps', 'set_buff_targets', 'cancel_shopping', 'open_buy_shop', 'close_buy_shop', 'sell_loot'
 ]);
 
 function clean(text) {
@@ -1515,6 +1515,30 @@ function upgradeGear(context) {
     return forEachNamedMember(context, upgradeGearForOne, (result) => result.playerVisibleReply || 'upgrading.');
 }
 
+// "sell your junk": each named companion walks to the nearest merchant and
+// sells everything unequipped it buys, shots excepted, then comes back.
+function sellLootForOne(context) {
+    const session = context.session, bot = session.actor;
+    const leader = partyLeaderFor(session);
+    if (!leader) return { applied: false, reason: 'not_a_party_companion' };
+    const NpcSellRules = invoke('GameServer/Items/NpcSellRules');
+    const ShotStock = invoke('GameServer/Inventory/ShotStock');
+    const sellable = (bot.backpack?.fetchItems?.() || []).filter((item) => !item.fetchEquipped?.()
+        && Number(item.fetchSelfId?.()) !== 57 && !ShotStock.SHOT_IDS.includes(Number(item.fetchSelfId?.()))
+        && NpcSellRules.canSell(item));
+    if (!sellable.length) return { applied: true, reason: 'nothing_to_sell', playerVisibleReply: 'Nothing to sell.' };
+    if (Number(bot.fetchPrivateStoreType?.()) === 3) invoke('GameServer/PrivateStore').quit(session, 3);
+    session.leaderBuyShop = undefined;
+    const target = invoke('GameServer/Bot/AI/States/FollowingState').beginLeaderSellTrip(session, leader);
+    if (!target) return { applied: false, reason: 'no_merchant_nearby' };
+    return { applied: true, outcome: 'pending', reason: 'sell_trip_started',
+        playerVisibleReply: `Selling ${sellable.length} item${sellable.length === 1 ? '' : 's'} at ${target.name || 'the merchant'}, back soon.` };
+}
+
+function sellLoot(context) {
+    return forEachNamedMember(context, sellLootForOne, (result) => result.playerVisibleReply);
+}
+
 // Takes items off the shopping list still waiting for a later trip (all of
 // them when none are named). A trip already under way finishes.
 function cancelShopping(context) {
@@ -1762,6 +1786,7 @@ function registerTools() {
         upgrade_gear: 'Buy the best affordable upgrade from the gear plan. slots limits it to what the leader named: ["weapon"] for "best weapon", or helmet, gloves, chest, legs, boots, shield, armor, jewelry. Without slots any slot may change (and better gear in the bag is equipped). Use only when the leader asks for upgrades. forMembers as for buy_for_self.',
         open_buy_shop: 'Sit down here with a private buy store so the leader can sell to it: items [{itemName, amount, price}] (price = Adena per unit). Following pauses until it is filled, closed, or the leader leaves.',
         close_buy_shop: 'Close the buy store and follow again.',
+        sell_loot: 'Go to the nearest merchant now and sell everything unequipped it buys (loot, junk, spare scrolls and gear; never shots), then come back. forMembers as for buy_for_self.',
         cancel_shopping: 'Take items (items/itemName; none = everything) off the shopping list still waiting for a later trip. A trip already under way finishes.',
         give_adena: 'Open a trade giving the leader adenaAmount Adena ("all" for everything but a 1,000 travel reserve). No cap.',
         go_to: 'Walk to the NPC or player named destinationName (within about 12,000 units) and wait there until called back.',
@@ -1776,7 +1801,7 @@ function registerTools() {
         'set_skill_priority', 'clear_skill_priority', 'set_combat_stance',
         'list_safe_loadouts', 'equip_candidate', 'optimize_equipment',
         'propose_trade', 'give_resources', 'fetch_resources', 'offer_resources', 'update_trade_offer', 'cancel_trade',
-'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps', 'set_buff_targets', 'cancel_shopping', 'open_buy_shop', 'close_buy_shop'
+'attack_target', 'set_combat_mode', 'retreat_party', 'focus_heal', 'use_skill', 'prefer_skill', 'avoid_skill', 'clear_skill_preferences', 'set_skill_rule', 'override_rule', 'buy_for_self', 'upgrade_gear', 'give_adena', 'go_to', 'plan_steps', 'set_buff_targets', 'cancel_shopping', 'open_buy_shop', 'close_buy_shop', 'sell_loot'
     ]);
     const economyActions = new Set([
         'quote_item', 'counter_offer', 'accept_price', 'decline_price', 'open_negotiated_trade'
@@ -1827,7 +1852,8 @@ function registerTools() {
         set_buff_targets: setBuffTargets,
         cancel_shopping: cancelShopping,
         open_buy_shop: openBuyShop,
-        close_buy_shop: closeBuyShop
+        close_buy_shop: closeBuyShop,
+        sell_loot: sellLoot
     };
 
     ACTIONS.forEach((name) => {

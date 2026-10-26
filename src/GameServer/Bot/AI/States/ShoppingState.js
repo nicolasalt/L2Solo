@@ -200,6 +200,8 @@ function deferEquipmentRetry(session) {
 }
 
 function usesWarehouseStop(session) {
+    // The leader said sell, so nothing is stored instead.
+    if (session.companionShopping?.leaderOrdered === true) return false;
     const kind = session.companionShopping?.kind;
     return !kind || kind === 'sell_resources' || kind === 'sell_junk';
 }
