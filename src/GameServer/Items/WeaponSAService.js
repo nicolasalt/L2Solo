@@ -10,16 +10,21 @@ const escape = value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;
 const template = id => ItemTemplateIndex.findStrictRequired(Data.items, Number(id));
 const itemName = id => template(id)?.template.name || `Item ${id}`;
 
+// The reason a player sees when the smith refuses (WeaponSa shows it).
 function nearby(session) {
     const actor = session.actor, talk = session.activeNpcTalk;
     const npc = NpcIndex.find(World, talk?.objectId);
     if (!actor || !npc || !Catalog.station(npc.fetchSelfId()) || npc.fetchSelfId() !== talk?.selfId
-        || npc.isDead?.() || actor.isDead?.() || actor.fetchIsOnline?.() === false
-        || actor.state?.fetchCombats?.() || actor.state?.fetchHits?.() || actor.state?.fetchCasts?.()
-        || session.activeTrade || session.botTrade || actor.fetchPrivateStoreType?.() || session.activeEnchantItem
-        || session.persistenceMode === 'ephemeral'
-        || Math.hypot(actor.fetchLocX() - npc.fetchLocX(), actor.fetchLocY() - npc.fetchLocY()) > 200
-        || Math.abs(actor.fetchLocZ() - npc.fetchLocZ()) > 200) throw Error('Speak to a nearby smith outside combat, trade or enchanting.');
+        || npc.isDead?.() || actor.isDead?.() || actor.fetchIsOnline?.() === false) throw Error('Speak to a smith first.');
+    if (actor.state?.fetchCombats?.() || actor.state?.fetchHits?.() || actor.state?.fetchCasts?.()) {
+        throw Error('You are still in combat. Wait a few seconds and try again.');
+    }
+    if (session.activeTrade || session.botTrade || actor.fetchPrivateStoreType?.() || session.activeEnchantItem) {
+        throw Error('Finish your trade, private store or enchanting first.');
+    }
+    if (session.persistenceMode === 'ephemeral') throw Error('This character cannot change its items.');
+    if (Math.hypot(actor.fetchLocX() - npc.fetchLocX(), actor.fetchLocY() - npc.fetchLocY()) > 200
+        || Math.abs(actor.fetchLocZ() - npc.fetchLocZ()) > 200) throw Error('Come closer to the smith.');
     return npc;
 }
 function usable(item) { return item && item.isWeapon() && item.fetchAmount() === 1 && !item.fetchEquipped() && !item.fetchPetLocked?.(); }

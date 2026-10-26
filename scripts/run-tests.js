@@ -240,6 +240,7 @@ const tests = [
     'tests/test_attack_hit_flags.js',
     'tests/test_attack_reflect_damage.js',
     'tests/test_bot_cast_end_wakeup.js',
+    'tests/test_combat_stance_timeout.js',
     'tests/test_player_attack_range.js',
     'tests/test_player_attack_approach.js',
     'tests/test_player_approach_position_refresh.js',
