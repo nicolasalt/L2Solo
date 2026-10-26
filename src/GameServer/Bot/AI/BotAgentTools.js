@@ -1113,6 +1113,13 @@ function setSkillRule(context) {
         if (!Number.isFinite(percent) || percent < 0 || percent > 90) return { applied: false, reason: 'invalid_skill_rule' };
         rules.rechargeOwnMpFloor = percent / 100;
         reply = `I won't Recharge anyone while my own MP is under ${Math.round(percent)}%.`;
+    } else if (rule === 'recharge_mages_only') {
+        if (!BotSkillCapabilities.manaRechargeSkill?.(session.actor)) return { applied: false, reason: 'recharge_not_learned' };
+        rules.rechargeMagesOnly = true;
+        reply = "I'll Recharge only our damage mages.";
+    } else if (rule === 'recharge_anyone') {
+        delete rules.rechargeMagesOnly;
+        reply = "I'll Recharge anyone who needs it.";
     } else if (rule === 'only_skills' || rule === 'maintain_debuffs') {
         // "Prominence only, nothing else even without MP" / "keep Gloom and
         // Surrender to Fire on the boss": skills by name, all must be known.
@@ -1154,6 +1161,7 @@ function setSkillRule(context) {
     } else if (rule === 'no_recharge_rule') {
         delete rules.rechargeBelow;
         delete rules.rechargeOwnMpFloor;
+        delete rules.rechargeMagesOnly;
         reply = 'Back to my normal Recharge timing.';
     } else if (rule === 'clear') {
         HotBotPolicyOverlay.set(session, { skillRules: null }, controllerContext(context));
@@ -1685,7 +1693,7 @@ function registerTools() {
         prefer_skill: 'Lead with the named skills (skillNames) from now on, until the party ends or the leader clears it.',
         avoid_skill: 'Stop using the named skills (skillNames) from now on, until the party ends or the leader clears it.',
         clear_skill_preferences: 'Clear prefer/avoid orders for skillNames, or for every skill when skillNames is empty.',
-        set_skill_rule: 'Set a rotation rule: skillRule no_debuffs | allow_debuffs | recharge_below (ruleValue = MP percent; healers Recharge anyone below it, in combat too) | recharge_own_mp_floor (ruleValue = the healer\'s own MP percent under which it stops Recharging; default 25) | no_recharge_rule | only_skills (skillNames: the only attack spells it may cast; it waits for MP instead of casting others) | no_only_skills | maintain_debuffs (skillNames: debuffs kept up on a raid boss, e.g. Curse Gloom, Surrender To Fire) | no_maintain_debuffs | no_attacks / allow_attacks (a support bot that never attacks) | act_as_healer / stop_healer_role (a buffer that heals like a healer) | clear.',
+        set_skill_rule: 'Set a rotation rule: skillRule no_debuffs | allow_debuffs | recharge_below (ruleValue = MP percent; healers Recharge anyone below it, in combat too) | recharge_own_mp_floor (ruleValue = the healer\'s own MP percent under which it stops Recharging; default 25) | recharge_mages_only (Recharge only damage-dealing mages, never healers, buffers or the tank) | recharge_anyone | no_recharge_rule | only_skills (skillNames: the only attack spells it may cast; it waits for MP instead of casting others) | no_only_skills | maintain_debuffs (skillNames: debuffs kept up on a raid boss, e.g. Curse Gloom, Surrender To Fire) | no_maintain_debuffs | no_attacks / allow_attacks (a support bot that never attacks) | act_as_healer / stop_healer_role (a buffer that heals like a healer) | clear.',
         override_rule: 'Override a built-in caution rule for the party (scope=self for this bot): overrideName ignore_level_limits | engage_raid | no_retreat | spend_all_mp, overrideEnabled true/false. Death and missing skills stay hard limits.',
         buy_for_self: 'items: the whole shopping list [{itemName, amount}] (or itemName + amount for one item). Go to the shop that sells it (shots, potions, scrolls, reagents, gear), buy amount with the buyer\'s own Adena, keep it and come back. forMembers names who buys (names, classes like "necromancers", roles like "mages", or "everyone"); empty = this bot.',
         upgrade_gear: 'Buy the best affordable upgrade from the gear plan. slots limits it to what the leader named: ["weapon"] for "best weapon", or helmet, gloves, chest, legs, boots, shield, armor, jewelry. Without slots any slot may change (and better gear in the bag is equipped). Use only when the leader asks for upgrades. forMembers as for buy_for_self.',

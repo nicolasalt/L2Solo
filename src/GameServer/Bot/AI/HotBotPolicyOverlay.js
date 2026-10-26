@@ -54,7 +54,7 @@ function normalizeBlockedSkills(value) {
 // skills the bot may cast (it waits for MP rather than cast another);
 // maintainDebuffs are kept up on a raid boss (BotAI.executeCombat);
 // noAttacks keeps the bot out of offence; actAsHealer gives a buffer the
-// healer's duties.
+// healer's duties; rechargeMagesOnly limits a healer's Recharge to damage mages.
 function normalizeSkillRules(value) {
     if (!value || typeof value !== 'object') return {};
     const rules = {};
@@ -66,6 +66,7 @@ function normalizeSkillRules(value) {
     if (ids(value.maintainDebuffs, 6).length) rules.maintainDebuffs = ids(value.maintainDebuffs, 6);
     if (value.noAttacks === true) rules.noAttacks = true;
     if (value.actAsHealer === true) rules.actAsHealer = true;
+    if (value.rechargeMagesOnly === true) rules.rechargeMagesOnly = true;
     const floor = value.rechargeOwnMpFloor;
     if (floor !== undefined && floor !== null && Number.isFinite(Number(floor))) rules.rechargeOwnMpFloor = clamp(Number(floor), 0, 0.9);
     return rules;

@@ -152,8 +152,16 @@ try {
         assert.strictEqual(HotBotPolicyOverlay.skillRules(bot).rechargeOwnMpFloor, 0.1);
         assert.strictEqual(HotBotPolicyOverlay.skillRules(bot).noDebuffs, true, 'the floor keeps the other rules');
         assert.strictEqual(BotAgentTools.execute(bot, decision('set_skill_rule', { skillRule: 'recharge_own_mp_floor', ruleValue: 95 }), [], ctx()).applied, false);
+        // "elders should only recharge damage dealing mages".
+        const mages = BotAgentTools.execute(bot, decision('set_skill_rule', { skillRule: 'recharge_mages_only' }), [], ctx());
+        assert.strictEqual(mages.applied, true, mages.reason);
+        assert.strictEqual(HotBotPolicyOverlay.skillRules(bot).rechargeMagesOnly, true);
+        BotAgentTools.execute(bot, decision('set_skill_rule', { skillRule: 'recharge_anyone' }), [], ctx());
+        assert.strictEqual(HotBotPolicyOverlay.skillRules(bot).rechargeMagesOnly, undefined);
+        BotAgentTools.execute(bot, decision('set_skill_rule', { skillRule: 'recharge_mages_only' }), [], ctx());
         BotAgentTools.execute(bot, decision('set_skill_rule', { skillRule: 'no_recharge_rule' }), [], ctx());
         assert.strictEqual(HotBotPolicyOverlay.skillRules(bot).rechargeOwnMpFloor, undefined);
+        assert.strictEqual(HotBotPolicyOverlay.skillRules(bot).rechargeMagesOnly, undefined, 'no_recharge_rule clears every Recharge rule');
     } finally {
         BotSkillCapabilities.manaRechargeSkill = originalRecharge;
     }

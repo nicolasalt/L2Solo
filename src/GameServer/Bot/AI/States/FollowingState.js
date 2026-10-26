@@ -695,11 +695,12 @@ function rechargeThreshold(entry, pullerActor, emergencyTankOnly) {
     return 0.55;
 }
 
-function lowestManaPartyMember(leaderSession, bot, pullerActor = null, maxDistance = 900, { emergencyTankOnly = false } = {}) {
+function lowestManaPartyMember(leaderSession, bot, pullerActor = null, maxDistance = 900, { emergencyTankOnly = false, magesOnly = false } = {}) {
     return partyMembersInSupportRange(leaderSession, bot, maxDistance)
         .filter((entry) => entry.actor !== bot)
         .filter((entry) => BotRoles.needsPartyManaRecovery(entry.actor))
         .filter((entry) => !emergencyTankOnly || BotRoles.inferRole(entry.actor) === 'tank')
+        .filter((entry) => !magesOnly || BotRoles.inferRole(entry.actor) === 'mage')
         .filter((entry) => entry.mpRatio < rechargeThreshold(entry, pullerActor, emergencyTankOnly))
         .sort((a, b) => (
             manaPriority(a, pullerActor) - manaPriority(b, pullerActor) ||
@@ -1472,20 +1473,24 @@ const FollowingState = {
         const emergencyHealSkill = canAffordHeal(emergencyHealCandidate) ? emergencyHealCandidate : routineHealCandidate;
         const groupHealSkill = canAffordHeal(groupHealCandidate) ? groupHealCandidate : null;
         const topOffHealSkill = groupHealSkill || routineHealSkill;
+        // The leader's Recharge rules ("Recharge mages below N% MP", "only
+        // damage mages") apply in combat too.
+        const leaderSkillRules = role === 'healer' && rechargeSkill && session.hotPolicyOverlay
+            ? invoke('GameServer/Bot/AI/HotBotPolicyOverlay').skillRules(session)
+            : null;
+        const magesOnly = leaderSkillRules?.rechargeMagesOnly === true;
         const safeManaPartyMember = role === 'healer' && rechargeSkill && !partyThreat && !leaderTargetId
-            ? lowestManaPartyMember(playerSession, bot, pulling.puller?.actor)
+            ? (magesOnly
+                ? lowestManaPartyMember(playerSession, bot, pulling.puller?.actor, 900, { magesOnly })
+                : lowestManaPartyMember(playerSession, bot, pulling.puller?.actor))
             : null;
         // A tank remains a standing melee role, but below one taunt reserve it
         // becomes an emergency Recharge target even during combat. Healing
         // still wins below, and a healer currently being attacked will not
         // stop to channel mana into somebody else.
-        const emergencyTankManaMember = role === 'healer' && rechargeSkill && partyThreat &&
+        const emergencyTankManaMember = role === 'healer' && rechargeSkill && partyThreat && !magesOnly &&
             Number(partyThreat.targetId || 0) !== Number(bot.fetchId())
             ? lowestManaPartyMember(playerSession, bot, pulling.puller?.actor, 900, { emergencyTankOnly: true })
-            : null;
-        // The leader's "Recharge mages below N% MP" rule applies in combat too.
-        const leaderSkillRules = role === 'healer' && rechargeSkill && session.hotPolicyOverlay
-            ? invoke('GameServer/Bot/AI/HotBotPolicyOverlay').skillRules(session)
             : null;
         const rechargeBelow = leaderSkillRules?.rechargeBelow || null;
         // The leader may move the healer's own-MP floor for Recharge (25% by default).
@@ -1494,6 +1499,7 @@ const FollowingState = {
             ? partyMembersInSupportRange(playerSession, bot, 900)
                 .filter((entry) => entry.actor !== bot && entry.mpRatio < rechargeBelow)
                 .filter((entry) => BotRoles.needsPartyManaRecovery(entry.actor))
+                .filter((entry) => !magesOnly || BotRoles.inferRole(entry.actor) === 'mage')
                 .sort((a, b) => a.mpRatio - b.mpRatio)[0] || null
             : null;
         const manaPartyMember = emergencyTankManaMember || ruleManaPartyMember || safeManaPartyMember;
