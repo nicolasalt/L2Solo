@@ -37,7 +37,7 @@ function safeNumber(read, fallback = 0) {
 
 function textRequestsInventory(text = '') {
     const lower = String(text || '').toLowerCase();
-    return /\b(items?|inventory|gear|weapons?|armou?rs?|adena|shots?|soulshots?|spiritshots?|potions?|scrolls?|bag|trade|loot|give|bring|spare|need|have|sell|buy|equip|equipped|upgrades?|shields?|bows?|swords?|daggers?|staffs?|robes?|jewel(?:ry|s)?|rings?|earrings?|necklaces?)\b/.test(lower) ||
+    return /\b(items?|inventory|gear|weapons?|armou?rs?|adena|shots?|soulshots?|spiritshots?|potions?|scrolls?|bag|trade|loot|sell|buy|equip|equipped|upgrades?|shields?|bows?|swords?|daggers?|staffs?|robes?|jewel(?:ry|s)?|rings?|earrings?|necklaces?)\b/.test(lower) ||
         /(инвент|вещ|шмот|оруж|брон|аден|сос|шоты|шот|трейд|лут|дай|принес|принести|запас|нужн|есть|прод|экип|надет|улучш)/.test(lower);
 }
 

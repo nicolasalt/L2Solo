@@ -42,15 +42,8 @@ assert(mixedRewardRoll.adena > 0, 'a mixed reward group may select its Adena ent
 assert(!mixedRewardRoll.items.some((item) => [2391, 4082].includes(item.selfId)),
     'a mixed group must not also award one of the item alternatives after selecting Adena');
 
-const originalRewardGroupRoll = ProgressionRates.rewardGroupRoll;
-let rolledNpcLevel = null;
-ProgressionRates.rewardGroupRoll = (group, kind, context, rng) => {
-    rolledNpcLevel = context.npcLevel;
-    return originalRewardGroupRoll(group, kind, context, rng);
-};
-BackgroundDropResolver.rollForFight({ spot: { ...spot, avgLevel: 99 }, killerLevel: 1, npcSelfId: 1, rng: () => 0 });
-ProgressionRates.rewardGroupRoll = originalRewardGroupRoll;
-assert.strictEqual(rolledNpcLevel, 1, 'deep-blue rules must use the defeated NPC level, not the spot average');
+// No Deep Blue penalty on this server: the defeated NPC's level does not
+// change its drops, so no level reaches the roll.
 
 const nameOnly = BackgroundDropResolver.rollForFight({
     spot: { ...spot, npcSelfIds: [], npcNames: ['Gremlin'] },

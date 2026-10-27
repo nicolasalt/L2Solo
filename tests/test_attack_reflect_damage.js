@@ -17,7 +17,7 @@ const attack = Object.create(Attack.prototype);
 attack.tryBreakCast = () => false;
 attack.applyReflectedDamage = (session, actor, creature, hit) => reflected.push(hit);
 const boss = { fetchId: () => 1041000 };
-const necromancer = { fetchId: () => 2000111 };
+const necromancer = { fetchId: () => 2000111, fetchKind: () => 'bot', state: { fetchDead: () => false } };
 
 try {
     attack.hit({}, necromancer, boss, 900, { skill: { fetchSelfId: () => 1148 } });

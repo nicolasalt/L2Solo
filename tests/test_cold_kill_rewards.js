@@ -5,11 +5,12 @@
 // solo or party, rolls its drop and spoil. The spoiler's
 // Spoil landing roll comes after exp, SP and adena, so only loot depends on it.
 const assert = require('assert');
+const { useRate } = require('./helpers/progressionRate');
 const fs = require('node:fs');
 require('./helpers/databaseIsolation');
 const fixture = require('./helpers/isolatedSocialDatabase')('cold-kill-rewards');
 
-process.env.L2NODE_PROGRESSION_RATE = 'x10';
+useRate('x10');
 require('../src/Global');
 fixture.assertConfigured(options.default);
 process.on('exit', () => fs.rmSync(fixture.directory, { recursive: true, force: true }));
@@ -109,14 +110,14 @@ const TIMESTAMP = 1790000000000;
 // [spot, seed, classId, level, [exp, sp, adena, [[itemId, amount]...]]]
 // Class 53 (Dwarven Fighter) is a spoiler; class 0 (Human Fighter) is not.
 const SOLO = [
-    ['pin_orcs', 1, 53, 15, [3910, 150, 742, [[1921, 1], [1867, 1], [1799, 10]]]],
-    ['pin_orcs', 1, 0, 14, [3910, 150, 742, [[1921, 1], [1867, 1]]]],
-    ['pin_orcs', 2, 53, 15, [3910, 150, 739, [[1870, 1]]]],
-    ['pin_orcs', 2, 0, 14, [3910, 150, 739, [[1870, 1]]]],
-    ['pin_orcs', 3, 53, 15, [3910, 150, 705, [[1799, 10]]]],
-    ['pin_orcs', 3, 0, 14, [3910, 150, 705, []]],
-    ['pin_orcs', 7, 53, 15, [3630, 120, 644, [[1870, 1], [1867, 10]]]],
-    ['pin_orcs', 7, 0, 14, [3630, 120, 644, [[1870, 1]]]],
+    ['pin_orcs', 1, 53, 15, [3910, 150, 686, [[1870, 1]]]],
+    ['pin_orcs', 1, 0, 14, [3910, 150, 686, [[1870, 1]]]],
+    ['pin_orcs', 2, 53, 15, [3910, 150, 770, [[1921, 1]]]],
+    ['pin_orcs', 2, 0, 14, [3910, 150, 770, [[1921, 1]]]],
+    ['pin_orcs', 3, 53, 15, [3910, 150, 735, [[1921, 1], [1867, 1]]]],
+    ['pin_orcs', 3, 0, 14, [3910, 150, 735, [[1921, 1], [1867, 1]]]],
+    ['pin_orcs', 7, 53, 15, [3630, 120, 630, [[1060, 1]]]],
+    ['pin_orcs', 7, 0, 14, [3630, 120, 630, [[1060, 1]]]],
     ['pin_unknown', 4, 53, 15, [1000, 100, 210, []]],
     ['pin_unknown', 4, 0, 14, [1000, 100, 210, []]]
 ];
@@ -137,24 +138,24 @@ for (const [spotId, seed, classId, level, expected] of SOLO) {
 // [spot, seed, [[classId, level]...], per member [exp, sp, adena, items]]
 const PARTY = [
     ['pin_orcs', 11, [[53, 15], [0, 16], [10, 14]], [
-        [9040, 340, 1200, [[1799, 10], [1799, 10], [1867, 10], [37, 1]]],
-        [10290, 370, 1200, [[1867, 1], [1867, 1], [1867, 1], [2005, 1], [1867, 1]]],
-        [7860, 290, 1199, []]
+        [9040, 340, 1144, [[1870, 1], [736, 10]]],
+        [10290, 370, 1143, [[1921, 1]]],
+        [7860, 290, 1143, [[1060, 1], [1867, 1]]]
     ]],
     ['pin_orcs', 12, [[53, 15], [0, 16], [10, 14]], [
-        [8660, 320, 1108, [[1060, 1], [1867, 10], [1867, 1], [1867, 10], [1921, 1], [1870, 1], [1921, 10]]],
-        [9850, 340, 1108, []],
-        [7520, 270, 1108, [[1802, 1]]]
+        [8660, 320, 1158, [[1867, 1], [1867, 10], [1867, 10], [1867, 1]]],
+        [9850, 340, 1157, [[1802, 1]]],
+        [7520, 270, 1157, [[1921, 1], [1867, 1], [1867, 1]]]
     ]],
     ['pin_orcs', 13, [[0, 15], [53, 13]], [
-        [14080, 510, 1714, [[49, 1], [1060, 1], [1921, 1], [1867, 1]]],
-        [10580, 380, 1714, [[1799, 10], [1799, 10], [1867, 10], [1870, 1]]]
+        [14080, 510, 1698, [[1870, 1], [1867, 1]]],
+        [10580, 380, 1697, [[1921, 1], [1867, 1], [1799, 10], [1921, 10], [1867, 1]]]
     ]],
     ['pin_orcs', 14, [[0, 15], [18, 16], [31, 15], [44, 14]], [
-        [7420, 240, 875, [[1060, 1]]],
-        [8450, 290, 875, [[1867, 1]]],
-        [7420, 240, 874, [[1802, 1]]],
-        [6460, 240, 874, []]
+        [7420, 240, 875, [[1802, 1]]],
+        [8450, 290, 875, [[1060, 1], [1870, 1], [1867, 1]]],
+        [7420, 240, 875, []],
+        [6460, 240, 875, []]
     ]],
     ['pin_unknown', 15, [[53, 15], [0, 16], [10, 14]], [
         [2300, 250, 547, []],
@@ -163,6 +164,8 @@ const PARTY = [
     ]]
 ];
 
+// Loot goldens follow this server's drop rules: each item rolls its own capped
+// chance once its group's scaled chance passes 100%.
 // The original EXP/SP goldens predate the C4 over-level kill penalty.
 // First reproduce them independently with the penalty disabled, then apply
 // the documented (5/6) exponent per killed NPC before party rounding. Loot,

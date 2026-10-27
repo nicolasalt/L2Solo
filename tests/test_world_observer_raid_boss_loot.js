@@ -1,6 +1,7 @@
 const assert = require('assert');
 const http = require('http');
 const { once } = require('events');
+const { useRate } = require('./helpers/progressionRate');
 require('../src/Global');
 
 // The raid-boss table and the selected boss on the map show each boss's
@@ -16,7 +17,7 @@ const Observer = invoke('WorldObserver/WorldObserverServer');
     const previous = process.env.L2NODE_PROGRESSION_RATE;
     const loot = async () => (await fetch(origin + '/observer/api/raid-bosses/loot')).json();
     try {
-        process.env.L2NODE_PROGRESSION_RATE = 'x1';
+        useRate('x1');
         const x1 = await loot();
         assert.strictEqual(x1.rateProfile.preset, 'x1');
         const ids = Object.keys(x1.bosses);
@@ -37,15 +38,14 @@ const Observer = invoke('WorldObserver/WorldObserverServer');
         assert(JSON.stringify(x1).length < 200000, 'the whole table stays small');
 
         // Higher rates raise the chances (and the table follows the rate change).
-        process.env.L2NODE_PROGRESSION_RATE = 'x10';
+        useRate('x10');
         const x10 = await loot();
         assert.strictEqual(x10.rateProfile.preset, 'x10');
         const chance = (table, itemId) => table.bosses['10001'].find((row) => row[0] === itemId)[2];
         assert(chance(x10, 6576) > chance(x1, 6576));
         console.log('Observer raid boss loot checks passed');
     } finally {
-        if (previous === undefined) delete process.env.L2NODE_PROGRESSION_RATE;
-        else process.env.L2NODE_PROGRESSION_RATE = previous;
+        useRate(previous);
         await new Promise(resolve => server.close(resolve));
     }
 })().catch(error => { console.error(error); process.exitCode = 1; });

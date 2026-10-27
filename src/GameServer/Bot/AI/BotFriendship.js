@@ -4,9 +4,9 @@ const BotRoles = invoke('GameServer/Bot/AI/BotRoles');
 const BotServiceIdentity = invoke('GameServer/Bot/AI/BotServiceIdentity');
 const BotSocialMemory = invoke('GameServer/Bot/AI/BotSocialMemory');
 
-// Friendship needs a trusted relationship; the friends window shows this trust.
+// Friendship has its own threshold; the friends window shows this trust.
 // With friendsNeedTrust off, any bot that knows the player can be added.
-const FRIEND_TRUST = BotSocialMemory.TRUSTED_TRUST;
+const FRIEND_TRUST = 6;
 function needsTrust() { return invoke('GameServer/Bot/Population/PopulationConfig').friendsNeedTrust !== false; }
 function friendThreshold() { return needsTrust() ? FRIEND_TRUST : 0; }
 function canAdd(bot) { return !needsTrust() || Number(bot?.trust || 0) >= FRIEND_TRUST; }
@@ -118,7 +118,7 @@ const BotFriendship = {
             const trust = Number(social.trust || 0);
             const insults = Number(social.insults || 0);
             const trustGate = needsTrust();
-            const reason = trustGate && BotSocialMemory.relationship(social) !== 'trusted' ? 'low_trust'
+            const reason = trustGate && trust < FRIEND_TRUST ? 'low_trust'
                 : insults > 0 ? 'insults'
                     : trustGate && BotSocialMemory.recentlyAbandoned(social, now) ? 'recently_abandoned' : null;
             const accepted = !reason;

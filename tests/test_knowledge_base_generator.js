@@ -70,8 +70,11 @@ assert(alligator.spawnIds.length > 0, 'Alligator must retain its map locations')
 const bichHwa = itemById.get(261);
 const alligatorSource = bichHwa.sources.drops.find((source) => source.mobId === 135);
 assert(alligatorSource, "Bich'Hwa must link back to Alligator");
-assert(Math.abs(alligatorSource.rateProfiles.x50.chancePercent - 0.131480721661) < 1e-12,
-    "Bich'Hwa must retain the runtime x50 category chance");
+// Our drop rule: a rare item's own chance scales with the rate (x50 = 50 x x1)
+// until it reaches 100%.
+assert(Math.abs(alligatorSource.rateProfiles.x50.chancePercent - 0.1450100799) < 1e-9,
+    "Bich'Hwa must retain the runtime x50 item chance");
+assert(Math.abs(alligatorSource.rateProfiles.x50.chancePercent - 50 * alligatorSource.rateProfiles.x1.chancePercent) < 1e-9);
 
 const halingka = mobById.get(646);
 assert.strictEqual(halingka.template.vitals.maxHp, 2643);
